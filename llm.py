@@ -5,22 +5,30 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Support both local .env and Streamlit Cloud secrets
-api_key = os.environ.get("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
-client = Groq(api_key=api_key)
+
+def _get_client():
+    """Lazy client — reads key at call time, strips whitespace."""
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    if not api_key:
+        try:
+            api_key = st.secrets["GROQ_API_KEY"]
+        except Exception:
+            pass
+    api_key = api_key.strip().strip('"').strip("'")
+    if not api_key:
+        st.error("⚠️ GROQ_API_KEY not set. Add it in Settings → Secrets.")
+        st.stop()
+    return Groq(api_key=api_key)
 
 
 def generate_answer(query: str, context_chunks: list,
                     chat_history: list = None, book_title: str = None):
     """
     Sends query + context to GROQ llama-3.3-70b-versatile.
-    Returns a streaming response object (iterate over it in Streamlit).
-
-    Improvements over v1:
-      1. Generic system prompt — adapts to any book, not hardcoded to one title
-      2. Conversation memory — includes recent chat history for follow-up questions
-      3. Better citation instructions
+    Returns a streaming response object.
     """
+    client = _get_client()
+
     # ── Build context string from retrieved chunks ───────────────────────
     context_parts = []
     for i, chunk in enumerate(context_chunks, 1):
@@ -50,7 +58,6 @@ Rules:
     # ── Build messages with conversation memory ──────────────────────────
     messages = [{"role": "system", "content": system_prompt}]
 
-    # Include recent chat history (last 6 turns max to stay within context window)
     if chat_history:
         recent_history = chat_history[-6:]
         for msg in recent_history:
@@ -59,7 +66,6 @@ Rules:
                 "content": msg["content"]
             })
 
-    # Current query with context
     user_prompt = f"""Context from {book_ref}:
 {context_str}
 
