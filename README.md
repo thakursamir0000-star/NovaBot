@@ -121,8 +121,8 @@ novabot/
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/novabot.git
-cd novabot
+git clone https://github.com/thakursamir0000-star/NovaBot.git
+cd NovaBot
 
 # Create virtual environment
 python -m venv venv
