@@ -1,0 +1,41 @@
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ── Virtual Environment ─────────────────────────────────
+venv/
+.venv/
+env/
+
+# ── Environment Variables ────────────────────────────────
+.env
+.env.local
+
+# ── IDE / Editor ─────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── OS Files ─────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Streamlit ────────────────────────────────────────────
+.streamlit/secrets.toml
+
+# ── Model Cache (large files) ────────────────────────────
+*.bin
+*.pt
+*.onnx
+
+# ── Uploaded PDFs / Temp Files ───────────────────────────
+*.pdf
+tmp/
