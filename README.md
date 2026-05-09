@@ -16,6 +16,12 @@
   <em>Built with Streamlit · Powered by GROQ · Hybrid Retrieval · Cross-Encoder Reranking</em>
 </p>
 
+<p align="center">
+  <a href="https://novabot-hmfpdexedmytfg6ikpju3p.streamlit.app/">
+    <img src="https://img.shields.io/badge/🔴_Live_Demo-NovaBot-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" alt="Live Demo" />
+  </a>
+</p>
+
 ---
 
 ## ✨ Features
