@@ -36,6 +36,9 @@ desktop.ini
 *.pt
 *.onnx
 
+# ── ChromaDB Vector Store (local persistence) ────────────
+chroma_db/
+
 # ── Uploaded PDFs / Temp Files ───────────────────────────
 *.pdf
 tmp/
