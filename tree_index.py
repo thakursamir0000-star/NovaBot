@@ -44,10 +44,16 @@ def safe_encode(embedder, texts):
         return np.zeros((len(texts), 384))
 
 
-def build_index(chunks: list, num_topics: int = 8) -> dict:
+def build_index(chunks: list, num_topics: int = 8, doc_id: str = None,
+                vector_store=None, force_reindex: bool = False) -> dict:
     """
     Builds a complete search index with multiple retrieval components.
     Uses sklearn LDA instead of gensim for Python 3.14 compatibility.
+
+    Semantic embeddings are persisted to a ChromaDB vector store (when a
+    vector_store module is provided). If the doc_id is already indexed,
+    embedding is skipped entirely so re-uploads don't repeat the ~1-2 min
+    encode pass. BM25 and LDA topic signals are always rebuilt in-memory.
     """
     for c in chunks:
         c['text'] = sanitize_text(c.get('text', ''))
@@ -57,13 +63,24 @@ def build_index(chunks: list, num_topics: int = 8) -> dict:
         print("[tree] No valid chunks found after sanitization.")
         return {
             'tree': {}, 'all_chunks': [],
-            'embedding_matrix': np.zeros((0, 384)), 'bm25': None
+            'bm25': None, 'embedding_matrix': None, 'doc_id': doc_id
         }
 
-    # ── Step 1: Batch-encode ALL chunks ──────────────────────────────────
-    print(f"[tree] Encoding {len(chunks)} chunks...")
     all_texts = [c['text'] for c in chunks]
-    embedding_matrix = safe_encode(embedder, all_texts)
+
+    # ── Step 1: Embed chunks (skip if already persisted in ChromaDB) ─────
+    embedding_matrix = None
+    already_indexed = (
+        vector_store is not None and doc_id is not None
+        and vector_store.is_indexed(doc_id) and not force_reindex
+    )
+    if already_indexed:
+        print(f"[tree] Doc '{doc_id}' already in ChromaDB — skipping embedding.")
+    else:
+        print(f"[tree] Encoding {len(chunks)} chunks...")
+        embedding_matrix = safe_encode(embedder, all_texts)
+        if vector_store is not None and doc_id is not None:
+            vector_store.index_document(doc_id, chunks, embedding_matrix, force=force_reindex)
 
     # ── Step 2: Pre-build BM25 index ─────────────────────────────────────
     print("[tree] Building BM25 index...")
@@ -96,7 +113,6 @@ def build_index(chunks: list, num_topics: int = 8) -> dict:
                     "heading": chunk['heading'], "text": chunk['text'],
                     "start_page": chunk['start_page'], "end_page": chunk['end_page'],
                     "topic_id": 0, "topic_words": [],
-                    "embedding": embedding_matrix[global_idx].tolist(),
                     "_global_idx": global_idx,
                 }
                 topic_nodes.append(node)
@@ -119,7 +135,6 @@ def build_index(chunks: list, num_topics: int = 8) -> dict:
                     "heading": chunk['heading'], "text": chunk['text'],
                     "start_page": chunk['start_page'], "end_page": chunk['end_page'],
                     "topic_id": 0, "topic_words": [],
-                    "embedding": embedding_matrix[global_idx].tolist(),
                     "_global_idx": global_idx,
                 }
                 topic_nodes.append(node)
@@ -149,7 +164,6 @@ def build_index(chunks: list, num_topics: int = 8) -> dict:
                 "heading": chunk['heading'], "text": chunk['text'],
                 "start_page": chunk['start_page'], "end_page": chunk['end_page'],
                 "topic_id": dominant_topic, "topic_words": topic_words,
-                "embedding": embedding_matrix[global_idx].tolist(),
                 "_global_idx": global_idx,
             }
             topic_nodes.append(node)
@@ -165,6 +179,7 @@ def build_index(chunks: list, num_topics: int = 8) -> dict:
     return {
         'tree': tree,
         'all_chunks': all_topic_nodes,
-        'embedding_matrix': embedding_matrix,
         'bm25': bm25,
+        'embedding_matrix': embedding_matrix,
+        'doc_id': doc_id,
     }

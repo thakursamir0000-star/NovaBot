@@ -1,5 +1,6 @@
 import streamlit as st
 import os
+import hashlib
 import tempfile
 from dotenv import load_dotenv
 
@@ -7,6 +8,7 @@ from ingest import extract_text_by_page, chunk_with_overlap, extract_book_title
 from tree_index import build_index
 from retrieval import retrieve
 from llm import generate_answer
+import vector_store
 
 load_dotenv()
 
@@ -150,11 +152,18 @@ with st.sidebar:
     chunk_overlap = st.slider("Chunk overlap (words)", min_value=50, max_value=300, value=100, step=25)
     use_reranker = st.toggle("🎯 Cross-encoder reranking", value=False, help="Uses a cross-encoder for more precise results (slower)")
 
+    if st.button("🔄 Re-index current book", use_container_width=True,
+                 help="Clears the cached index and rebuilds the ChromaDB vectors from scratch"):
+        load_index.clear()
+        st.session_state.reindex = True
+        st.rerun()
+
     st.markdown('<div class="sidebar-section-title">🧠 Model Info</div>', unsafe_allow_html=True)
     st.markdown("""
     <div class="sidebar-info-card"><div class="label">LLM</div><div class="value">Llama 3.3 70B</div></div>
     <div class="sidebar-info-card"><div class="label">Provider</div><div class="value">Groq (Ultra-Fast)</div></div>
     <div class="sidebar-info-card"><div class="label">Retrieval</div><div class="value">BM25 35% + Semantic 55% + Topic 10%</div></div>
+    <div class="sidebar-info-card"><div class="label">Vector Store</div><div class="value">ChromaDB (persistent)</div></div>
     <div class="sidebar-info-card"><div class="label">Embeddings</div><div class="value">MiniLM-L6-v2</div></div>
     <div class="sidebar-info-card"><div class="label">Reranker</div><div class="value">MS-MARCO MiniLM (optional)</div></div>
     """, unsafe_allow_html=True)
@@ -180,23 +189,30 @@ uploaded_file = st.file_uploader("📄 Upload your PDF to get started", type="pd
 
 
 @st.cache_data(show_spinner="📖 Reading & indexing PDF — this takes ~1–2 min on first run...")
-def load_index(pdf_bytes, num_topics, chunk_size, chunk_overlap):
+def load_index(pdf_bytes, num_topics, chunk_size, chunk_overlap, force_reindex=False):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
         tmp.write(pdf_bytes)
         tmp_path = tmp.name
 
+    doc_id = hashlib.sha1(pdf_bytes).hexdigest()[:12]
     book_title = extract_book_title(tmp_path)
     pages = extract_text_by_page(tmp_path)
     chunks = chunk_with_overlap(pages, chunk_size=chunk_size, overlap=chunk_overlap)
-    index_data = build_index(chunks, num_topics=num_topics)
+    index_data = build_index(
+        chunks, num_topics=num_topics,
+        doc_id=doc_id, vector_store=vector_store, force_reindex=force_reindex,
+    )
     os.unlink(tmp_path)
-    return index_data, len(chunks), book_title
+    return index_data, len(chunks), book_title, doc_id
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 if uploaded_file:
     pdf_bytes = uploaded_file.read()
-    index_data, chunk_count, book_title = load_index(pdf_bytes, num_topics, chunk_size, chunk_overlap)
+    force_reindex = st.session_state.pop("reindex", False)
+    index_data, chunk_count, book_title, doc_id = load_index(
+        pdf_bytes, num_topics, chunk_size, chunk_overlap, force_reindex=force_reindex
+    )
 
     tree = index_data['tree']
     total_nodes = len(index_data['all_chunks'])
@@ -207,7 +223,7 @@ if uploaded_file:
         <div class="status-icon">✅</div>
         <div class="status-text">
             <div class="main-text">"{book_title}" indexed successfully</div>
-            <div class="sub-text">Overlapping chunks with hybrid retrieval ready.</div>
+            <div class="sub-text">Chunks persisted in ChromaDB — hybrid retrieval ready.</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -219,6 +235,21 @@ if uploaded_file:
         <div class="metric-card"><div class="metric-value">{chapters}</div><div class="metric-label">Chapters</div></div>
     </div>
     """, unsafe_allow_html=True)
+
+    # ── Retrieval scope (ChromaDB metadata filtering) ─────────────────────
+    total_pages = max(c['end_page'] for c in index_data['all_chunks']) + 1
+    collection = vector_store.get_collection()
+
+    with st.expander("🔎 Retrieval scope", expanded=False):
+        scope_pages = st.toggle("Restrict search to a page range", value=False,
+                                help="Uses ChromaDB metadata filtering so retrieval only considers chunks in the selected pages")
+        if scope_pages:
+            col1, col2 = st.columns(2)
+            from_page = col1.number_input("From page", min_value=1, max_value=total_pages, value=1)
+            to_page = col2.number_input("To page", min_value=from_page, max_value=total_pages, value=total_pages)
+            page_start, page_end = from_page - 1, to_page - 1
+        else:
+            page_start = page_end = None
 
     # ── Chat ─────────────────────────────────────────────────────────────
     if "messages" not in st.session_state:
@@ -237,7 +268,12 @@ if uploaded_file:
 
         with st.chat_message("assistant"):
             with st.spinner("🔍 Searching the book..."):
-                chunks = retrieve(query, index_data, top_k=top_k, use_reranker=use_reranker)
+                chunks = retrieve(
+                    query, index_data,
+                    top_k=top_k, use_reranker=use_reranker,
+                    collection=collection, doc_id=doc_id,
+                    page_start=page_start, page_end=page_end,
+                )
 
             stream = generate_answer(
                 query, chunks,

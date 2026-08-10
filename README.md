@@ -3,6 +3,7 @@
   <img src="https://img.shields.io/badge/Streamlit-1.32+-FF4B4B?logo=streamlit&logoColor=white" />
   <img src="https://img.shields.io/badge/LLM-Llama_3.3_70B-blueviolet" />
   <img src="https://img.shields.io/badge/Inference-GROQ-orange" />
+  <img src="https://img.shields.io/badge/Vector_Store-ChromaDB-00cec9" />
   <img src="https://img.shields.io/badge/License-MIT-green" />
 </p>
 
@@ -13,7 +14,7 @@
 </p>
 
 <p align="center">
-  <em>Built with Streamlit · Powered by GROQ · Hybrid Retrieval · Cross-Encoder Reranking</em>
+  <em>Built with Streamlit · Powered by GROQ · Hybrid Retrieval · ChromaDB Vector Store · Cross-Encoder Reranking</em>
 </p>
 
 <p align="center">
@@ -28,6 +29,8 @@
 
 - **📄 Upload Any PDF** — Works with any book, not hardcoded to a single title
 - **🔍 Hybrid Retrieval** — BM25 (35%) + Semantic Search (55%) + LDA Topic Boost (10%)
+- **💾 Persistent Vector Store** — Embeddings live in ChromaDB (local, zero-server), surviving restarts without re-embedding
+- **🎯 Metadata Filtering** — Scope retrieval to a page range or document with ChromaDB `where` filters
 - **🌳 Hierarchical Tree Index** — 3-level architecture: Chapters → Sections → Topic Nodes
 - **🎯 Cross-Encoder Reranking** — Optional MS-MARCO reranker for precision (toggle in sidebar)
 - **💬 Conversation Memory** — Follow-up questions use chat history for context
@@ -51,7 +54,8 @@
 │  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
 │  │  BM25    │  │   Semantic    │  │   LDA Topic      │  │
 │  │  (35%)   │  │   (55%)       │  │   Boost (10%)    │  │
-│  │ Pre-built│  │ NumPy MatMul  │  │  Word Overlap    │  │
+│  │ Pre-built│  │  ChromaDB     │  │  Word Overlap    │  │
+│  │          │  │  cosine query │  │                  │  │
 │  └────┬─────┘  └──────┬────────┘  └───────┬──────────┘  │
 │       └───────────┬────┘───────────────────┘             │
 │                   ▼                                      │
@@ -84,7 +88,7 @@ PDF Upload
 ┌────────────────┐    ┌────────────────────┐    ┌─────────────────────┐
 │  PDF Ingestion │───▶│  Sliding-Window    │───▶│  Tree Index Builder │
 │  (PyPDF2)      │    │  Chunking          │    │                     │
-│                │    │  (500w, 100 overlap)│    │  • Batch Embeddings │
+│                │    │  (500w, 100 overlap)│    │  • ChromaDB vectors │
 │  • Page-by-page│    │                    │    │  • Pre-built BM25   │
 │  • Title detect│    │  • Any PDF format  │    │  • LDA per Chapter  │
 └────────────────┘    └────────────────────┘    └─────────────────────┘
@@ -98,8 +102,9 @@ PDF Upload
 novabot/
 ├── app.py              # Streamlit UI + main application logic
 ├── ingest.py           # PDF text extraction + sliding-window chunking
-├── tree_index.py       # Hierarchical index: embeddings + BM25 + LDA topics
-├── retrieval.py        # Hybrid retrieval + optional cross-encoder reranking
+├── tree_index.py       # Hierarchical index: BM25 + LDA topics + ChromaDB population
+├── vector_store.py     # Persistent ChromaDB client + chunk indexing/querying
+├── retrieval.py        # Hybrid retrieval + metadata filtering + optional reranking
 ├── llm.py              # GROQ LLM integration with conversation memory
 ├── requirements.txt    # Python dependencies
 ├── .env                # API keys (not committed)
@@ -109,8 +114,9 @@ novabot/
 | Module | Responsibility |
 |---|---|
 | `ingest.py` | Extracts text page-by-page, detects book title, chunks with configurable overlap |
-| `tree_index.py` | Batch-encodes embeddings, pre-builds BM25, runs LDA topic modeling per chapter |
-| `retrieval.py` | 3-signal hybrid scoring + lazy-loaded cross-encoder reranker |
+| `tree_index.py` | Pre-builds BM25, runs LDA topic modeling per chapter, persists embeddings to ChromaDB |
+| `vector_store.py` | Persistent ChromaDB client (cosine), chunk add/delete/query with metadata filters |
+| `retrieval.py` | 3-signal hybrid scoring (semantic signal from ChromaDB) + lazy-loaded reranker |
 | `llm.py` | Dynamic system prompt, conversation memory, streaming GROQ responses |
 | `app.py` | Premium Streamlit UI with sidebar controls and source citation display |
 
@@ -155,6 +161,8 @@ streamlit run app.py
 
 Open http://localhost:8501 in your browser, upload a PDF, and start asking questions!
 
+> A local `./chroma_db/` directory is created automatically on first run (it is git-ignored) — no separate database server is required. If you ever change the vector store, just click **🔄 Re-index current book** in the sidebar.
+
 ---
 
 ## ⚙️ Configurable Parameters
@@ -168,6 +176,7 @@ All tunable from the sidebar:
 | Chunk size (words) | 500 | 200–1000 | Words per chunk in sliding window |
 | Chunk overlap (words) | 100 | 50–300 | Overlapping words between chunks |
 | Cross-encoder reranking | Off | On/Off | MS-MARCO reranker for higher precision |
+| Page-range scope | Off | On/Off | Restrict retrieval to a page range via ChromaDB metadata filtering |
 
 ---
 
@@ -175,7 +184,7 @@ All tunable from the sidebar:
 
 ### Why Hybrid Retrieval?
 - **BM25** excels at exact keyword matching (e.g., "gradient descent")
-- **Semantic search** catches paraphrases (e.g., "how to reduce loss" → gradient descent)
+- **Semantic search** (ChromaDB cosine query) catches paraphrases (e.g., "how to reduce loss" → gradient descent)
 - **Topic boost** rewards chunks from the same topic cluster as the query
 - Together, they outperform any single method
 
@@ -185,8 +194,16 @@ All tunable from the sidebar:
 
 ### Why Pre-built Indices?
 - BM25 index is built once at upload time, not reconstructed per query
-- Embeddings are batch-encoded in a single forward pass (32 chunks at a time)
-- Cosine similarity uses NumPy matrix multiplication instead of per-chunk loops
+- Embeddings are batch-encoded in a single forward pass (32 chunks at a time) and persisted to ChromaDB
+- Semantic queries hit the persistent HNSW index (cosine) instead of scanning every vector in a Python loop
+
+### Why ChromaDB?
+- **What it replaced**: the old semantic signal re-computed cosine similarity in-memory over a NumPy matrix on every query — nothing persisted between sessions, and there was no way to scope results.
+- **Persistent**: embeddings survive Streamlit restarts — re-uploading a book skips the expensive re-embedding pass (checked by `doc_id`)
+- **Metadata filtering**: page numbers and doc IDs are stored as metadata, so scope filters ("only pages 10–20") are pushed into the vector store query instead of post-filtering results
+- **Scalable**: HNSW approximate nearest-neighbor search beats a full linear scan once a book grows large
+- **Zero infrastructure**: runs locally as a `PersistentClient` — no separate server to deploy
+- **Cross-document ready**: every chunk is tagged with a `doc_id`, enabling multi-book search later
 
 ---
 
@@ -197,8 +214,9 @@ All tunable from the sidebar:
 | **Frontend** | Streamlit with custom CSS |
 | **LLM** | Llama 3.3 70B via GROQ |
 | **Embeddings** | all-MiniLM-L6-v2 (384-dim) |
+| **Vector Store** | ChromaDB (persistent, HNSW, cosine distance) |
 | **Keyword Search** | BM25Okapi (rank-bm25) |
-| **Topic Modeling** | Latent Dirichlet Allocation (Gensim) |
+| **Topic Modeling** | Latent Dirichlet Allocation (scikit-learn) |
 | **Reranker** | cross-encoder/ms-marco-MiniLM-L-6-v2 |
 | **PDF Parsing** | PyPDF2 |
 | **NLP** | NLTK (tokenization, stopwords) |
