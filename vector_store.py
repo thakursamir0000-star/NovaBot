@@ -1,4 +1,6 @@
 import chromadb
+import re
+import unicodedata
 
 # Persistent ChromaDB store — survives Streamlit restarts, no server needed.
 CHROMA_PATH = "./chroma_db"
@@ -6,6 +8,14 @@ COLLECTION_NAME = "novabot_chunks"
 
 _client = None
 _collection = None
+
+
+def _sanitize(text: str) -> str:
+    """Strip non-ASCII characters that trip ChromaDB's encoder."""
+    text = unicodedata.normalize("NFKD", text)
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"[^\x20-\x7E\n\r\t]", " ", text)
+    return re.sub(r" {2,}", " ", text).strip()
 
 
 def get_client() -> chromadb.PersistentClient:
@@ -64,7 +74,7 @@ def index_document(doc_id: str, chunks: list, embeddings, force: bool = False) -
     ids, documents, metadatas = [], [], []
     for i, (chunk, _emb) in enumerate(zip(chunks, embeddings)):
         ids.append(f"{doc_id}:{i}")
-        documents.append(chunk["text"])
+        documents.append(_sanitize(chunk["text"]))
         metadatas.append({
             "doc_id": doc_id,
             "global_idx": i,
