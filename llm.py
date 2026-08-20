@@ -24,7 +24,7 @@ def _get_client():
 def generate_answer(query: str, context_chunks: list,
                     chat_history: list = None, book_title: str = None):
     """
-    Sends query + context to GROQ allam-2-7b.
+    Sends query + context to GROQ openai/gpt-oss-120b.
     Returns a streaming response object.
     """
     client = _get_client()
@@ -76,7 +76,7 @@ Answer:"""
     messages.append({"role": "user", "content": user_prompt})
 
     response = client.chat.completions.create(
-        model="allam-2-7b",
+        model="openai/gpt-oss-120b",
         messages=messages,
         temperature=0.2,
         max_tokens=1024,

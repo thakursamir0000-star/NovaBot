@@ -160,7 +160,7 @@ with st.sidebar:
 
     st.markdown('<div class="sidebar-section-title">🧠 Model Info</div>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="sidebar-info-card"><div class="label">LLM</div><div class="value">Allam 2 7B</div></div>
+    <div class="sidebar-info-card"><div class="label">LLM</div><div class="value">GPT-OSS 120B</div></div>
     <div class="sidebar-info-card"><div class="label">Provider</div><div class="value">Groq (Ultra-Fast)</div></div>
     <div class="sidebar-info-card"><div class="label">Retrieval</div><div class="value">BM25 35% + Semantic 55% + Topic 10%</div></div>
     <div class="sidebar-info-card"><div class="label">Vector Store</div><div class="value">ChromaDB (persistent)</div></div>
