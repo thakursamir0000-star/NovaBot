@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white" />
   <img src="https://img.shields.io/badge/Streamlit-1.32+-FF4B4B?logo=streamlit&logoColor=white" />
-  <img src="https://img.shields.io/badge/LLM-Llama_3.3_70B-blueviolet" />
+  <img src="https://img.shields.io/badge/LLM-GPT--OSS_120B-blueviolet" />
   <img src="https://img.shields.io/badge/Inference-GROQ-orange" />
   <img src="https://img.shields.io/badge/Vector_Store-ChromaDB-00cec9" />
   <img src="https://img.shields.io/badge/License-MIT-green" />
@@ -72,7 +72,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │                    LLM GENERATION                       │
 │                                                         │
-│  Model: Llama 3.3 70B (via GROQ)                        │
+│  Model: GPT-OSS 120B (via GROQ)                          │
 │  Context: Top-K Retrieved Passages                      │
 │  Memory: Last 6 conversation turns                      │
 │  Output: Streaming response with [Source N] citations   │
@@ -212,7 +212,7 @@ All tunable from the sidebar:
 | Component | Technology |
 |---|---|
 | **Frontend** | Streamlit with custom CSS |
-| **LLM** | Llama 3.3 70B via GROQ |
+| **LLM** | GPT-OSS 120B via GROQ |
 | **Embeddings** | all-MiniLM-L6-v2 (384-dim) |
 | **Vector Store** | ChromaDB (persistent, HNSW, cosine distance) |
 | **Keyword Search** | BM25Okapi (rank-bm25) |
