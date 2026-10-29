@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <em>Hybrid retrieval (BM25 + embeddings) · cross-encoder reranking · ChromaDB · Groq · 86.8% answer accuracy, 100% refusal on unanswerable questions, measured in CI</em>
+  <em>Hybrid retrieval (BM25 + embeddings) · cross-encoder reranking · ChromaDB · Groq · 92.1% answer accuracy, 100% refusal on unanswerable questions, 0 unsupported claims — measured in CI</em>
 </p>
 
 <p align="center">
@@ -109,19 +109,33 @@ What this shows:
 - **Reranking gives the best ranking** (MRR 0.94) but is ~35× slower on CPU, so it stays an option.
 - 38 questions over 32 chunks is small: one question moves Recall by 0.026.
 
-**Answers** (44 questions; top-5 passages from RRF, the default at the time of this run)
+**Answers** (44 questions, weighted hybrid, top-5 passages)
 
 | Metric | Result |
 |---|---|
-| Answer accuracy (key facts present) | **0.868** (33 / 38) |
+| Answer accuracy (key facts present) | **0.921** (35 / 38) |
 | Says "I couldn't find this in the book" for unanswerable questions | **1.00** (6 / 6) |
-| False abstentions (refused an answerable question) | 0.079 (3 / 38) |
-| Faithfulness (LLM judge: every claim supported by the passages) | **1.00** (35 / 35 answers judged) |
-| Citation support (a cited passage contains the evidence) | 0.14 — see note |
-| Answer latency p50 / p95 | 5.4 s / 11.9 s |
-| Tokens per answer | ~735 |
+| False abstentions (refused an answerable question) | **0.00** (0 / 38) |
+| Faithfulness (LLM judge: every claim supported by the passages) | **1.00** (38 / 38 answers judged) |
+| Answers with a citation | 0.974 (37 / 38) |
+| Citation validity (no citation to a passage that wasn't retrieved) | 1.00 |
+| Citation support (a cited passage contains the evidence) | 0.974 |
+| Answer latency p50 / p95 | 3.7 s / 6.5 s |
+| Tokens per answer | ~734 |
 
-*Note on citations:* answers were judged fully faithful, yet citation support was only 0.14. That points at citation **detection** rather than wrong answers: the parser in that run recognised only the exact `[Source N]` form, while gpt-oss models often write variants such as `【Source 1】`, `[Source 1, 3]` or `【1†source】`. The parser now accepts these, the evaluation reports the share of answers with a detected citation, and the CI summary lists every miss and uncited answer — the next run re-measures this.
+How it got here (two CI runs, same questions):
+
+| | First run (RRF retrieval, strict citation parser) | Current |
+|---|---|---|
+| Answer accuracy | 0.868 | **0.921** |
+| False abstentions | 3 / 38 | **0 / 38** |
+| Citation support | 0.14 | **0.974** |
+| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s |
+
+- **Citation support 0.14 → 0.97 was a measurement bug, not better answers.** The first parser only recognised the exact `[Source N]` form, but gpt-oss often writes `【Source 1】`, `[Source 1, 3]` or `【1†source】`. Answers were already judged fully faithful; once the parser accepted these formats, the citations were found.
+- **Accuracy and false abstentions improved with the switch to weighted retrieval**, which puts the right passage in front of the LLM more often. LLM output also varies a little between runs (temperature 0.2), so small differences shouldn't be over-read.
+- **The 3 "wrong answers" left in that run were grading errors.** The model wrote non-breaking hyphens (`WT‑3`, `IR‑2`, `single‑use` with U+2011), which the key-fact matcher didn't treat as `-`. With the matcher fixed, the same answers score 38 / 38. The one uncited answer (#41) was correct too; the prompt now asks for a citation after every sentence. The next CI run re-measures both.
+- The CI summary lists the remaining misses and uncited answers for each run.
 
 ## 🚀 Getting Started
 
