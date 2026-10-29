@@ -3,10 +3,11 @@
 Two first-stage retrievers produce ranked lists:
   - BM25 over tokenized chunk text (exact terms, names, codes)
   - dense cosine similarity over sentence embeddings (paraphrases)
-They are combined with Reciprocal Rank Fusion ("rrf", default) or a weighted
-sum of min-max normalized scores ("weighted"); either retriever can also be
-used alone. An optional cross-encoder then re-orders the candidates.
-`evaluation/evaluate.py` compares all of these.
+They are combined with a weighted sum of min-max normalized scores
+("weighted", default) or Reciprocal Rank Fusion ("rrf"); either retriever can
+also be used alone. An optional cross-encoder then re-orders the candidates.
+`evaluation/evaluate.py` compares all of these; weighted fusion is the default
+because it scored best there (MRR 0.910 vs 0.866 for RRF).
 """
 import re
 from collections import Counter
@@ -17,7 +18,7 @@ from rank_bm25 import BM25Okapi
 from embeddings import embed
 
 METHODS = ("bm25", "semantic", "weighted", "rrf")
-DEFAULT_METHOD = "rrf"
+DEFAULT_METHOD = "weighted"
 RRF_K = 60
 WEIGHTS = {"bm25": 0.4, "semantic": 0.6}
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
