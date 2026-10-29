@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-evaluate:
+    runs-on: ubuntu-latest
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}  # optional; enables the answer evaluation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Cache Hugging Face models
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-minilm-msmarco-v1
+      - name: Install
+        run: pip install -r requirements-dev.txt
+      - name: Lint
+        run: ruff check .
+      - name: Test
+        run: pytest
+      - name: Retrieval evaluation (real embedding + reranker models)
+        run: python evaluation/evaluate.py
+      - name: Answer evaluation (Groq)
+        if: ${{ env.GROQ_API_KEY != '' }}
+        run: python evaluation/evaluate.py --with-llm
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evaluation-results
+          path: evaluation/results/

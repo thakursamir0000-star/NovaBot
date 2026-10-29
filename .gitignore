@@ -39,6 +39,11 @@ desktop.ini
 # ── ChromaDB Vector Store (local persistence) ────────────
 chroma_db/
 
+# ── Tests / evaluation output ────────────────────────────
+.pytest_cache/
+.ruff_cache/
+evaluation/results/
+
 # ── Uploaded PDFs / Temp Files ───────────────────────────
 *.pdf
 tmp/

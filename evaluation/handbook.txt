@@ -1,0 +1,83 @@
+--- page 1 ---
+Chapter 1: Welcome to Orion Valley Research Station
+Orion Valley Research Station was founded in 1987 by the Halvorsen Institute as a small summer camp for wetland ecologists. Today it is a year-round facility at an elevation of 2,340 metres on the northern rim of Lake Tessaly.
+The station director is Dr. Imani Okafor, who has led the station since 2019. Her office is on the second floor of Cedar Hall, next to the map room.
+Our mission is the long-term monitoring of alpine wetlands, glacier melt and migratory birds. Every visiting team contributes to records that now span more than three decades.
+Cedar Hall is the main building. It holds the Commons, the laboratories and the dormitories, and it can host up to 42 overnight researchers at a time. A permanent staff of 11 people keeps the station running through all four seasons.
+This handbook explains how to travel here, how daily life works, the rules for laboratories and field work, and what to do in an emergency. Please read it before your first day and keep a copy on your phone.
+
+--- page 2 ---
+Getting to the station
+The nearest town is Brennick, 38 km south of the station along the valley floor. A station shuttle runs on Tuesdays and Fridays and departs from the Brennick depot at 07:30. Seats must be reserved through the front desk by the evening before.
+Private vehicles can use the gravel access road, Route 9, during the warmer months. Route 9 closes when snow depth on the pass exceeds 40 cm. When the road is closed, the only way up is the Skyline Lift, a cable car that runs every hour from the valley station.
+On arrival, every visitor checks in at the Gatehouse and receives a badge. Badge colours tell staff who you are at a glance: blue badges are for researchers, orange badges are for contractors and green badges are for students.
+Lost badges must be reported to the Gatehouse the same day so that they can be deactivated.
+
+--- page 3 ---
+Chapter 2: Accommodation and Daily Life
+Researchers sleep in Cedar Hall or in one of the two timber cabins, Fernwood and Larkspur. Cabin rooms are assigned to teams that stay longer than three weeks.
+Quiet hours run from 22:00 to 06:00. Music, power tools and loud conversations in the corridors are not allowed during this time.
+All meals are served in the Commons. Breakfast is served from 06:30 to 08:00 and dinner starts at 18:30. Packed lunches for field days can be collected from the kitchen hatch after breakfast. The kitchen team needs dietary requests at least 48 hours in advance so that ingredients can be brought up on the shuttle.
+The laundry room is open on Mondays, Wednesdays and Saturdays. Shower water is heated by solar panels, so in winter please limit showers to five minutes.
+
+--- page 4 ---
+Water and power
+Drinking water comes from a spring above the station and passes through a three-stage filter: a sediment stage, an activated carbon stage and an ultraviolet stage. The sediment cartridges are replaced every 90 days, and the ultraviolet lamp is replaced every 12 months. The maintenance log for the filter hangs in the pump house.
+Electricity comes from a 120 kW solar array on the south slope. Two backup diesel generators, called G1 and G2, take over during long storms. Both generators are test-run on the first Monday of every month.
+The fuel reserve holds 6,000 litres of diesel, which is enough for about 18 days at full load. Fuel deliveries are only possible while Route 9 is open, so the tank is filled to the top every October.
+
+--- page 5 ---
+Chapter 3: Laboratory Rules
+The wet lab is in the East Wing of Cedar Hall and the dry lab is in the West Wing. Lab coats and eye protection are mandatory in the wet lab at all times.
+Every sample must be labelled with the project code, the collection date and the collector's initials. Unlabelled samples are discarded at the end of each week.
+Long-term samples are kept in an ultra-low freezer set to minus 80 degrees Celsius. The freezer is nicknamed Polaris. If its control panel shows alarm code F-17, the freezer door has been left ajar; close it firmly and tell the lab manager.
+Food and drink are never allowed in the laboratories. Used needles, blades and broken glass go into the red sharps bins, which are collected every Thursday.
+
+--- page 6 ---
+Equipment booking
+Shared instruments are booked through the LabSlot system on the station intranet. The confocal microscope can be booked for a maximum block of 4 hours, and no team may hold more than two blocks per week.
+Drone flights need approval from the station safety officer, Tomasz Wierzbicki, at least 24 hours before take-off. Drones may not fly higher than 120 m above the ground.
+Between March and July, drones must also stay at least 500 m away from the heron nesting colony on the western shore. Flight logs are uploaded to LabSlot after every flight.
+Broken equipment should be tagged with a red fault label and reported in LabSlot so that the technician can repair it before the next booking.
+
+--- page 7 ---
+Chapter 4: Field Work Safety
+The station uses a buddy system. Nobody works alone in the field beyond the boardwalk, and every team writes its route and estimated return time on the check-out board in the Gatehouse.
+If a team is 60 minutes overdue, the duty manager starts the search protocol called Lantern. Each team must carry a satellite messenger, which can be borrowed from the Gatehouse.
+The emergency radio frequency is 151.625 MHz, programmed as channel 3 on all station radios.
+Thunderstorms are common on July and August afternoons. Use the lightning rule: if you hear thunder within 30 seconds of seeing a flash, stop work and descend below the treeline immediately. Do not shelter under isolated trees or on the ridge.
+
+--- page 8 ---
+Wildlife
+Black bears are active from April to November. All food, including snacks and toothpaste, must be kept in the steel bear lockers outside each building.
+Always keep at least 100 m away from bears and at least 25 m away from elk, especially when calves are present. Never feed any animal.
+Report every large-animal sighting in the WildLog app so that other teams can plan their routes. Rattlesnakes are not found above 2,000 m, so they are rarely a concern at the station.
+The most common injury at the station is a twisted ankle on the scree slopes below Mirror Ridge, so wear boots with ankle support.
+
+--- page 9 ---
+Chapter 5: Data Management
+Raw data from instruments and loggers is uploaded to the station server, Basalt, every night at 02:00. Backups of all project data are kept for seven years.
+Personal laptops that hold station data must use full-disk encryption. Files follow the naming convention YYYYMMDD_site_instrument, for example 20260714_WT-2_logger.
+After a two-year embargo, datasets are published with a DOI in the institute's open repository.
+Questions about storage, sharing or publication go to the data steward, Priya Raman.
+
+--- page 10 ---
+Long-term monitoring sites
+The wetland transects are numbered WT-1 to WT-6. Transect WT-3 is closed for restoration until 2027, so please route around it.
+The glacier stakes on the Corrie Glacier are site GL-2. The stakes are re-drilled every September, when the snow cover is at its lowest.
+The bird banding station is site BRD-4. Banding takes place at dawn during the spring and autumn migrations.
+The weather mast on Mirror Ridge records temperature, wind and precipitation every 10 minutes and sends the readings to Basalt.
+
+--- page 11 ---
+Chapter 6: Emergencies
+In case of fire, everyone gathers at the assembly point by the flagpole in front of Cedar Hall. Wardens check the names against the Gatehouse list.
+First aid kits are kept in every building. Defibrillators are mounted in the Commons and in the Gatehouse.
+The nearest hospital is Brennick General, about 50 minutes away by road. In serious cases a helicopter is called; the landing pad, H1, is behind the Larkspur cabin.
+An evacuation drill is held every April. Any accident or near miss must be reported within 24 hours using form IR-2.
+
+--- page 12 ---
+Chapter 7: Sustainability and Departure
+Compost bins are next to the Commons, and the station has followed a zero single-use plastics policy since 2021.
+Before leaving, researchers must return their keys to the Gatehouse and clear their lab bench. A short site report must be submitted within 30 days of departure.
+Each visit includes a carbon offset fee of 12 euros, which goes to the wetland restoration fund.
+Thank you for helping us protect Orion Valley for the next generation of researchers.

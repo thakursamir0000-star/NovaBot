@@ -1,20 +1,20 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white" />
-  <img src="https://img.shields.io/badge/Streamlit-1.32+-FF4B4B?logo=streamlit&logoColor=white" />
+  <img src="https://img.shields.io/badge/Streamlit-1.40+-FF4B4B?logo=streamlit&logoColor=white" />
   <img src="https://img.shields.io/badge/LLM-GPT--OSS_120B-blueviolet" />
   <img src="https://img.shields.io/badge/Inference-GROQ-orange" />
   <img src="https://img.shields.io/badge/Vector_Store-ChromaDB-00cec9" />
-  <img src="https://img.shields.io/badge/License-MIT-green" />
+  <a href="https://github.com/thakursamir0000-star/NovaBot/actions/workflows/ci.yml"><img src="https://github.com/thakursamir0000-star/NovaBot/actions/workflows/ci.yml/badge.svg" /></a>
 </p>
 
 <h1 align="center">🚀 NovaBot — AI Book Assistant</h1>
 
 <p align="center">
-  <strong>A hierarchical RAG system that lets you upload any PDF book and ask natural-language questions with cited, source-grounded answers.</strong>
+  <strong>Upload any PDF book and ask questions in plain English — answers come from the book, with citations to the pages they came from, and "I couldn't find this in the book" when the answer isn't there.</strong>
 </p>
 
 <p align="center">
-  <em>Built with Streamlit · Powered by GROQ · Hybrid Retrieval · ChromaDB Vector Store · Cross-Encoder Reranking</em>
+  <em>Hybrid retrieval (BM25 + embeddings, Reciprocal Rank Fusion) · cross-encoder reranking · ChromaDB · Groq · measured with a retrieval and answer-quality evaluation suite</em>
 </p>
 
 <p align="center">
@@ -27,200 +27,123 @@
 
 ## ✨ Features
 
-- **📄 Upload Any PDF** — Works with any book, not hardcoded to a single title
-- **🔍 Hybrid Retrieval** — BM25 (35%) + Semantic Search (55%) + LDA Topic Boost (10%)
-- **💾 Persistent Vector Store** — Embeddings live in ChromaDB (local, zero-server), surviving restarts without re-embedding
-- **🎯 Metadata Filtering** — Scope retrieval to a page range or document with ChromaDB `where` filters
-- **🌳 Hierarchical Tree Index** — 3-level architecture: Chapters → Sections → Topic Nodes
-- **🎯 Cross-Encoder Reranking** — Optional MS-MARCO reranker for precision (toggle in sidebar)
-- **💬 Conversation Memory** — Follow-up questions use chat history for context
-- **📑 Source Citations** — Every answer includes page numbers and source passages
-- **⚡ Streaming Responses** — Real-time token streaming via GROQ's ultra-fast inference
-- **🎨 Premium Dark UI** — Custom-themed Streamlit interface with animations
-
----
+- **📄 Any PDF** — page-aware sliding-window chunking; chunks inherit the chapter/section heading they fall under
+- **🔍 Hybrid retrieval** — BM25 for exact terms (names, codes, numbers) + MiniLM embeddings for paraphrases, fused with **Reciprocal Rank Fusion**; weighted fusion and single retrievers are selectable for comparison
+- **🎯 Cross-encoder reranking** *(optional)* — MS-MARCO MiniLM re-orders the top candidates using the full passage
+- **💬 Follow-up questions** — "explain that more" is rewritten into a standalone query from the chat history before searching
+- **📑 Checked citations** — every answer cites `[Source N]`; citations to passages that weren't retrieved are flagged, and uncited answers are marked
+- **🙅 Honest abstention** — when the passages don't contain the answer, the bot says *"I couldn't find this in the book."*
+- **🔒 Private per visitor** — each browser session gets its own ChromaDB collection, and collections are deleted after 24 hours
+- **🛟 Model failover** — if a Groq model is down or retired, the next one answers
+- **⏱ Transparent timing** — every answer shows search time, answer time and the rewritten query
 
 ## 🏗️ Architecture
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                      USER QUERY                         │
-└──────────────────────┬──────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────┐
-│               HYBRID RETRIEVAL ENGINE                   │
-│                                                         │
-│  ┌──────────┐  ┌───────────────┐  ┌──────────────────┐  │
-│  │  BM25    │  │   Semantic    │  │   LDA Topic      │  │
-│  │  (35%)   │  │   (55%)       │  │   Boost (10%)    │  │
-│  │ Pre-built│  │  ChromaDB     │  │  Word Overlap    │  │
-│  │          │  │  cosine query │  │                  │  │
-│  └────┬─────┘  └──────┬────────┘  └───────┬──────────┘  │
-│       └───────────┬────┘───────────────────┘             │
-│                   ▼                                      │
-│         Combined Hybrid Score                            │
-│                   │                                      │
-│                   ▼                                      │
-│     ┌──────────────────────────┐                         │
-│     │  Cross-Encoder Reranker  │  (Optional)             │
-│     │  MS-MARCO MiniLM-L6     │                          │
-│     └────────────┬─────────────┘                         │
-└──────────────────┼──────────────────────────────────────┘
-                   │
-                   ▼
-┌─────────────────────────────────────────────────────────┐
-│                    LLM GENERATION                       │
-│                                                         │
-│  Model: GPT-OSS 120B (via GROQ)                          │
-│  Context: Top-K Retrieved Passages                      │
-│  Memory: Last 6 conversation turns                      │
-│  Output: Streaming response with [Source N] citations   │
-└─────────────────────────────────────────────────────────┘
-```
-
-### Indexing Pipeline
-
-```
-PDF Upload
-    │
-    ▼
-┌────────────────┐    ┌────────────────────┐    ┌─────────────────────┐
-│  PDF Ingestion │───▶│  Sliding-Window    │───▶│  Tree Index Builder │
-│  (PyPDF2)      │    │  Chunking          │    │                     │
-│                │    │  (500w, 100 overlap)│    │  • ChromaDB vectors │
-│  • Page-by-page│    │                    │    │  • Pre-built BM25   │
-│  • Title detect│    │  • Any PDF format  │    │  • LDA per Chapter  │
-└────────────────┘    └────────────────────┘    └─────────────────────┘
-```
-
----
-
-## 📁 Project Structure
-
-```
-novabot/
-├── app.py              # Streamlit UI + main application logic
-├── ingest.py           # PDF text extraction + sliding-window chunking
-├── tree_index.py       # Hierarchical index: BM25 + LDA topics + ChromaDB population
-├── vector_store.py     # Persistent ChromaDB client + chunk indexing/querying
-├── retrieval.py        # Hybrid retrieval + metadata filtering + optional reranking
-├── llm.py              # GROQ LLM integration with conversation memory
-├── requirements.txt    # Python dependencies
-├── .env                # API keys (not committed)
-└── README.md           # This file
+```mermaid
+flowchart LR
+    PDF[PDF upload] --> I[ingest.py<br/>pages → overlapping chunks<br/>+ section headings]
+    I --> B[BM25 index]
+    I --> E[embeddings.py<br/>MiniLM-L6-v2] --> V[(ChromaDB<br/>per-session collection)]
+    Q[Question] --> C[llm.condense_question<br/>resolve follow-ups]
+    C --> B & V
+    B --> F[Reciprocal Rank Fusion]
+    V --> F
+    F --> R[Cross-encoder rerank<br/>optional]
+    R --> G[llm.py<br/>grounded answer + citations<br/>Groq with failover]
+    G --> K[citation check] --> A[Answer + sources + timing]
 ```
 
 | Module | Responsibility |
 |---|---|
-| `ingest.py` | Extracts text page-by-page, detects book title, chunks with configurable overlap |
-| `tree_index.py` | Pre-builds BM25, runs LDA topic modeling per chapter, persists embeddings to ChromaDB |
-| `vector_store.py` | Persistent ChromaDB client (cosine), chunk add/delete/query with metadata filters |
-| `retrieval.py` | 3-signal hybrid scoring (semantic signal from ChromaDB) + lazy-loaded reranker |
-| `llm.py` | Dynamic system prompt, conversation memory, streaming GROQ responses |
-| `app.py` | Premium Streamlit UI with sidebar controls and source citation display |
+| `ingest.py` | PDF text per page (pypdf), title, sliding-window chunks with page spans and headings |
+| `embeddings.py` | One shared sentence-embedding model, normalized vectors |
+| `vector_store.py` | `ChromaStore` (per-session collections, top-n HNSW queries, page filters, expiry) and `InMemoryStore` |
+| `retrieval.py` | Tokenizer, BM25, semantic search, RRF / weighted fusion, reranking, page scope |
+| `llm.py` | Groq calls with failover, follow-up rewriting, prompt with numbered sources, citation and abstention checks |
+| `app.py` | Streamlit UI |
+| `evaluation/` | Test document, 44 questions with known answers, evaluation script |
 
----
+## 📊 Evaluation
+
+NovaBot is evaluated on `evaluation/handbook.txt`, an original 12-page operations handbook for a fictional research station. Because the facts are invented, the LLM can't answer from memory — it has to retrieve them. The 44 questions in `evaluation/questions.jsonl` are:
+
+- **13 keyword questions** that reuse the document's wording ("What does alarm code F-17 mean?"),
+- **25 paraphrased questions**, several with almost no words in common with the text ("most frequent way people get hurt" → "most common injury … twisted ankle"),
+- **6 unanswerable questions** the handbook doesn't cover ("Is there Wi-Fi in the cabins?").
+
+Each answerable question has an evidence phrase (which passages count as relevant) and the key facts a correct answer must contain.
+
+| Layer | Metrics |
+|---|---|
+| 1 · Retrieval | Recall@1/3/5, MRR@10, nDCG@5 — overall and for keyword vs paraphrase questions — for BM25, semantic, weighted fusion, RRF, and both with reranking |
+| 2 · Answers | Key-fact accuracy · abstention on unanswerable questions · false-abstention rate · citation validity · citation support (a cited passage contains the evidence) · faithfulness (LLM judge checks every claim against the passages) |
+| 3 · System | Index build time · retrieval latency p50/p95 per method · answer latency p50/p95 · tokens per answer |
+
+```bash
+python evaluation/evaluate.py              # layers 1 + 3 (downloads the embedding and reranker models)
+python evaluation/evaluate.py --with-llm   # + layer 2, needs GROQ_API_KEY
+python evaluation/evaluate.py --doc my_book.pdf --questions my_questions.jsonl
+```
+
+CI runs the retrieval evaluation with the real models on every push and posts the table in the run summary; the answer evaluation runs too when a `GROQ_API_KEY` repository secret is set.
+
+**Results:** *being filled in from the first CI run.*
 
 ## 🚀 Getting Started
 
-### Prerequisites
-
-- Python 3.10+
-- A [GROQ API key](https://console.groq.com/) (free tier available)
-
-### Installation
-
 ```bash
-# Clone the repository
 git clone https://github.com/thakursamir0000-star/NovaBot.git
 cd NovaBot
-
-# Create virtual environment
 python -m venv venv
-source venv/bin/activate        # Linux/Mac
-# venv\Scripts\activate          # Windows
-
-# Install dependencies
+venv\Scripts\activate            # Windows  (source venv/bin/activate on Linux/Mac)
 pip install -r requirements.txt
 ```
 
-### Configuration
-
-Create a `.env` file in the project root:
+Create a `.env` file:
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
 ```
 
-### Run
-
 ```bash
 streamlit run app.py
 ```
 
-Open http://localhost:8501 in your browser, upload a PDF, and start asking questions!
+Open http://localhost:8501, upload a PDF, and ask away. A local `./chroma_db/` folder is created automatically (git-ignored).
 
-> A local `./chroma_db/` directory is created automatically on first run (it is git-ignored) — no separate database server is required. If you ever change the vector store, just click **🔄 Re-index current book** in the sidebar.
+### Settings (sidebar)
 
----
+| Setting | Default | Notes |
+|---|---|---|
+| Sources to retrieve | 5 | Passages given to the LLM |
+| Retrieval method | Hybrid — RRF | Also: weighted hybrid, BM25 only, semantic only |
+| Chunk size | 500 words | Changing it builds a new index (the old vectors are never reused for differently cut chunks) |
+| Chunk overlap | 100 words | Capped at half the chunk size |
+| Cross-encoder reranking | Off | More precise, slower |
+| Page-range scope | Off | Search only selected pages |
 
-## ⚙️ Configurable Parameters
+Environment variables: `GROQ_MODEL` (default `openai/gpt-oss-120b`), `GROQ_FALLBACK_MODELS` (comma-separated), `EMBEDDING_MODEL` (default `all-MiniLM-L6-v2`).
 
-All tunable from the sidebar:
+## 🧪 Testing
 
-| Parameter | Default | Range | Description |
-|---|---|---|---|
-| Sources to retrieve | 5 | 2–10 | Number of passages returned per query |
-| Topics per chapter | 8 | 3–15 | LDA topics extracted during indexing |
-| Chunk size (words) | 500 | 200–1000 | Words per chunk in sliding window |
-| Chunk overlap (words) | 100 | 50–300 | Overlapping words between chunks |
-| Cross-encoder reranking | Off | On/Off | MS-MARCO reranker for higher precision |
-| Page-range scope | Off | On/Off | Restrict retrieval to a page range via ChromaDB metadata filtering |
+```bash
+pip install -r requirements-dev.txt
+ruff check .
+pytest
+```
 
----
+The 39 tests run without network access or an API key: a fake Groq client, a hashing stand-in for the embedding model, and real ChromaDB in a temporary folder. They cover chunking, tokenization, every retrieval method and both fusions, reranker input, index reuse, per-session isolation and expiry, citation and abstention checks, model failover (including failures mid-stream), the evaluation metrics, and a Streamlit smoke test that clicks **Re-index**.
 
-## 🧠 Technical Highlights
+## 🧠 Design notes
 
-### Why Hybrid Retrieval?
-- **BM25** excels at exact keyword matching (e.g., "gradient descent")
-- **Semantic search** (ChromaDB cosine query) catches paraphrases (e.g., "how to reduce loss" → gradient descent)
-- **Topic boost** rewards chunks from the same topic cluster as the query
-- Together, they outperform any single method
+- **Why RRF?** BM25 scores and cosine similarities live on different scales; RRF combines *ranks*, so it needs no weight tuning. The evaluation compares it with weighted fusion on the same questions.
+- **Why a fixed abstention sentence?** It makes "doesn't hallucinate when the book has no answer" measurable.
+- **Why chunk settings in the document ID?** The same PDF cut differently is a different index; reusing vectors across chunkings silently returns the wrong passages.
+- **What was removed:** an LDA "topic boost" (worth at most 1.5% of the score and zero on PDFs without "Chapter N" headings) and the unused "hierarchical tree", along with their scikit-learn and NLTK dependencies.
 
-### Why Sliding-Window Chunking?
-- Old approach: regex-based splitting at headings → broke across PDFs, lost context at boundaries
-- New approach: fixed-size windows with overlap → no context loss, works with any document
+## ⚠️ Limitations
 
-### Why Pre-built Indices?
-- BM25 index is built once at upload time, not reconstructed per query
-- Embeddings are batch-encoded in a single forward pass (32 chunks at a time) and persisted to ChromaDB
-- Semantic queries hit the persistent HNSW index (cosine) instead of scanning every vector in a Python loop
-
-### Why ChromaDB?
-- **What it replaced**: the old semantic signal re-computed cosine similarity in-memory over a NumPy matrix on every query — nothing persisted between sessions, and there was no way to scope results.
-- **Persistent**: embeddings survive Streamlit restarts — re-uploading a book skips the expensive re-embedding pass (checked by `doc_id`)
-- **Metadata filtering**: page numbers and doc IDs are stored as metadata, so scope filters ("only pages 10–20") are pushed into the vector store query instead of post-filtering results
-- **Scalable**: HNSW approximate nearest-neighbor search beats a full linear scan once a book grows large
-- **Zero infrastructure**: runs locally as a `PersistentClient` — no separate server to deploy
-- **Cross-document ready**: every chunk is tagged with a `doc_id`, enabling multi-book search later
-
----
-
-## 🛠️ Tech Stack
-
-| Component | Technology |
-|---|---|
-| **Frontend** | Streamlit with custom CSS |
-| **LLM** | GPT-OSS 120B via GROQ |
-| **Embeddings** | all-MiniLM-L6-v2 (384-dim) |
-| **Vector Store** | ChromaDB (persistent, HNSW, cosine distance) |
-| **Keyword Search** | BM25Okapi (rank-bm25) |
-| **Topic Modeling** | Latent Dirichlet Allocation (scikit-learn) |
-| **Reranker** | cross-encoder/ms-marco-MiniLM-L-6-v2 |
-| **PDF Parsing** | PyPDF2 |
-| **NLP** | NLTK (tokenization, stopwords) |
-
----
-
-
+- Scanned PDFs (images) have no extractable text; OCR isn't included.
+- The evaluation document is small (12 pages); results on long books will differ — run the script on your own PDF and questions.
+- The faithfulness judge is the same model family that writes the answers.
+- Embeddings are English-focused (MiniLM).
