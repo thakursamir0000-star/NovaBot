@@ -44,6 +44,17 @@ def test_fact_matching_ignores_case_spacing_and_markdown():
     assert not includes_facts("Tuesdays only", ["tuesday", "friday"])
 
 
+# Real answers from CI that the first grader marked wrong: gpt-oss wrote U+2011 non-breaking hyphens.
+@pytest.mark.parametrize("answer, facts", [
+    ("- Wetland transect WT‑3 is closed for restoration until 2027【Source 1】【Source 2】", ["wt-3", "2027"]),
+    ("- Use form IR‑2 to report an accident. [Source 1]", ["ir-2"]),
+    ("- The station follows a zero single‑use plastics policy since 2021 [Source 1]", ["single-use"]),
+    ("Transect WT–3 is closed", ["wt-3"]),  # en dash
+])
+def test_fact_matching_folds_typographic_dashes(answer, facts):
+    assert includes_facts(answer, facts)
+
+
 def test_every_evidence_phrase_lands_inside_a_chunk(handbook_index):
     for q in load_questions(DEFAULT_QUESTIONS):
         if q.get("evidence"):

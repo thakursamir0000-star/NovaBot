@@ -32,6 +32,7 @@ def test_citation_formats(answer, cited):
 def test_abstention_detection():
     assert llm.is_abstention("I couldn't find this in the book.")
     assert llm.is_abstention("  i couldn't find this in the book")
+    assert llm.is_abstention("I couldn’t find this in the book.")  # curly apostrophe
     assert not llm.is_abstention("The filter is replaced every 90 days [Source 1].")
 
 
@@ -40,6 +41,7 @@ def test_build_messages_numbers_sources_and_explains_abstention():
     history = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]
     messages = llm.build_messages("What is beta?", chunks, history, book_title="Test Book")
     assert messages[0]["role"] == "system" and llm.NOT_FOUND in messages[0]["content"]
+    assert "citation after every sentence" in messages[0]["content"]
     assert messages[1:3] == history
     assert "[Source 2 | Pages 5–5 | Chapter 2: B]" in messages[-1]["content"]
 
