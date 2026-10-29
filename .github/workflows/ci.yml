@@ -3,12 +3,28 @@ name: CI
 on:
   push:
   pull_request:
+  # The answer evaluation spends Groq quota (~80 LLM calls per run), so it runs
+  # on demand and weekly; the retrieval evaluation (no LLM) runs on every push.
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Groq model that writes the answers (each model has its own daily quota)
+        type: choice
+        default: openai/gpt-oss-120b
+        options:
+          - openai/gpt-oss-120b
+          - openai/gpt-oss-20b
+          - llama-3.3-70b-versatile
+          - llama-3.1-8b-instant
+  schedule:
+    - cron: "0 3 * * 1"  # Mondays 03:00 UTC
 
 jobs:
   test-and-evaluate:
     runs-on: ubuntu-latest
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}  # optional; enables the answer evaluation
+      GROQ_MODEL: ${{ inputs.model || 'openai/gpt-oss-120b' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -26,8 +42,8 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest
-      - name: Evaluation (real embedding + reranker models; answers too when GROQ_API_KEY is set)
-        run: python evaluation/evaluate.py ${{ env.GROQ_API_KEY != '' && '--with-llm' || '' }}
+      - name: Evaluation (retrieval on every push; answers via Groq on demand and weekly)
+        run: python evaluation/evaluate.py ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && env.GROQ_API_KEY != '' && '--with-llm' || '' }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
