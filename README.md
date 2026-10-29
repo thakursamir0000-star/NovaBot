@@ -85,7 +85,7 @@ python evaluation/evaluate.py --with-llm   # + layer 2, needs GROQ_API_KEY
 python evaluation/evaluate.py --doc my_book.pdf --questions my_questions.jsonl
 ```
 
-CI runs the retrieval evaluation with the real models on every push and posts the table in the run summary; the answer evaluation runs too when a `GROQ_API_KEY` repository secret is set.
+CI runs the retrieval evaluation with the real models on every push and posts the table in the run summary. The answer evaluation makes ~80 Groq calls per run, so it doesn't spend quota on every push: start it from **Actions → CI → Run workflow** (pick the answering model there), or let the weekly scheduled run do it; both need a `GROQ_API_KEY` repository secret.
 
 ### Results
 
