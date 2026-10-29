@@ -1,16 +1,27 @@
-import streamlit as st
+import html
+import logging
 import os
-import hashlib
 import tempfile
+import time
+import uuid
+
+import streamlit as st
 from dotenv import load_dotenv
 
-from ingest import extract_text_by_page, chunk_with_overlap, extract_book_title
-from tree_index import build_index
-from retrieval import retrieve
-from llm import generate_answer
-import vector_store
+import llm
+from ingest import chunk_with_overlap, document_id, extract_book_title, extract_text_by_page, safe_overlap
+from retrieval import DEFAULT_METHOD, METHODS, build_index, retrieve
+from vector_store import cleanup_stale_sessions, session_store
 
 load_dotenv()
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+METHOD_LABELS = {
+    "rrf": "Hybrid — Reciprocal Rank Fusion",
+    "weighted": "Hybrid — weighted scores",
+    "bm25": "Keywords only (BM25)",
+    "semantic": "Semantic only",
+}
 
 st.set_page_config(
     page_title="NovaBot — AI Book Assistant",
@@ -147,23 +158,23 @@ with st.sidebar:
 
     st.markdown('<div class="sidebar-section-title">⚙️ Retrieval Settings</div>', unsafe_allow_html=True)
     top_k = st.slider("Sources to retrieve", min_value=2, max_value=10, value=5)
-    num_topics = st.slider("Topics per chapter", min_value=3, max_value=15, value=8)
+    method = st.selectbox("Retrieval method", METHODS, index=METHODS.index(DEFAULT_METHOD),
+                          format_func=METHOD_LABELS.get)
     chunk_size = st.slider("Chunk size (words)", min_value=200, max_value=1000, value=500, step=50)
-    chunk_overlap = st.slider("Chunk overlap (words)", min_value=50, max_value=300, value=100, step=25)
+    chunk_overlap = st.slider("Chunk overlap (words)", min_value=0, max_value=300, value=100, step=25,
+                              help="Capped at half the chunk size")
     use_reranker = st.toggle("🎯 Cross-encoder reranking", value=False, help="Uses a cross-encoder for more precise results (slower)")
 
     if st.button("🔄 Re-index current book", use_container_width=True,
-                 help="Clears the cached index and rebuilds the ChromaDB vectors from scratch"):
-        load_index.clear()
-        st.session_state.reindex = True
-        st.rerun()
+                 help="Rebuilds this book's vectors from scratch"):
+        st.session_state.force_reindex = True
 
     st.markdown('<div class="sidebar-section-title">🧠 Model Info</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="sidebar-info-card"><div class="label">LLM</div><div class="value">GPT-OSS 120B</div></div>
+    st.markdown(f"""
+    <div class="sidebar-info-card"><div class="label">LLM</div><div class="value">{html.escape(llm.PRIMARY_MODEL)} (+ fallbacks)</div></div>
     <div class="sidebar-info-card"><div class="label">Provider</div><div class="value">Groq (Ultra-Fast)</div></div>
-    <div class="sidebar-info-card"><div class="label">Retrieval</div><div class="value">BM25 35% + Semantic 55% + Topic 10%</div></div>
-    <div class="sidebar-info-card"><div class="label">Vector Store</div><div class="value">ChromaDB (persistent)</div></div>
+    <div class="sidebar-info-card"><div class="label">Retrieval</div><div class="value">{METHOD_LABELS[method]}</div></div>
+    <div class="sidebar-info-card"><div class="label">Vector Store</div><div class="value">ChromaDB (one collection per session)</div></div>
     <div class="sidebar-info-card"><div class="label">Embeddings</div><div class="value">MiniLM-L6-v2</div></div>
     <div class="sidebar-info-card"><div class="label">Reranker</div><div class="value">MS-MARCO MiniLM (optional)</div></div>
     """, unsafe_allow_html=True)
@@ -188,57 +199,87 @@ uploaded_file = st.file_uploader("📄 Upload your PDF to get started", type="pd
     help="Upload any PDF book. NovaBot will index it and let you ask questions.")
 
 
-@st.cache_data(show_spinner="📖 Reading & indexing PDF — this takes ~1–2 min on first run...")
-def load_index(pdf_bytes, num_topics, chunk_size, chunk_overlap, force_reindex=False):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = tmp.name
+if "session_id" not in st.session_state:
+    st.session_state.session_id = uuid.uuid4().hex
 
-    doc_id = hashlib.sha1(pdf_bytes).hexdigest()[:12]
-    book_title = extract_book_title(tmp_path)
-    pages = extract_text_by_page(tmp_path)
-    chunks = chunk_with_overlap(pages, chunk_size=chunk_size, overlap=chunk_overlap)
-    index_data = build_index(
-        chunks, num_topics=num_topics,
-        doc_id=doc_id, vector_store=vector_store, force_reindex=force_reindex,
-    )
-    os.unlink(tmp_path)
-    return index_data, len(chunks), book_title, doc_id
+
+@st.cache_resource
+def _cleanup_once():
+    """Remove other sessions' expired vectors once per server process."""
+    try:
+        return cleanup_stale_sessions()
+    except Exception as e:
+        logging.getLogger(__name__).warning("Session cleanup skipped: %s", e)
+        return 0
+
+
+def load_book(pdf_bytes, chunk_size, chunk_overlap, force=False):
+    """Build (or reuse) this session's index for the uploaded PDF."""
+    overlap = safe_overlap(chunk_size, chunk_overlap)
+    doc_id = document_id(pdf_bytes, chunk_size, overlap)
+    previous = st.session_state.get("book")
+    if previous and previous["doc_id"] == doc_id and not force:
+        return previous
+
+    with st.spinner("📖 Reading & indexing PDF — the first run also downloads the embedding model..."):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
+            tmp.write(pdf_bytes)
+            path = tmp.name
+        try:
+            title = extract_book_title(path)
+            pages = extract_text_by_page(path)
+        finally:
+            os.unlink(path)
+        started = time.perf_counter()
+        chunks = chunk_with_overlap(pages, chunk_size=chunk_size, overlap=overlap)
+        if "store" not in st.session_state:
+            st.session_state.store = session_store(st.session_state.session_id)
+        index = build_index(chunks, doc_id, st.session_state.store, force=force)
+        book = {"doc_id": doc_id, "title": title, "index": index, "seconds": time.perf_counter() - started}
+
+    if not previous or previous["doc_id"].split("-")[0] != doc_id.split("-")[0]:
+        st.session_state.messages = []  # a different book starts a fresh conversation
+    st.session_state.book = book
+    return book
 
 
 # ── Main ─────────────────────────────────────────────────────────────────────
+_cleanup_once()
+
 if uploaded_file:
-    pdf_bytes = uploaded_file.read()
-    force_reindex = st.session_state.pop("reindex", False)
-    index_data, chunk_count, book_title, doc_id = load_index(
-        pdf_bytes, num_topics, chunk_size, chunk_overlap, force_reindex=force_reindex
-    )
+    client = llm.get_client()
+    if client is None:
+        st.error("⚠️ GROQ_API_KEY not set. Add it to a .env file or to Settings → Secrets.")
+        st.stop()
 
-    tree = index_data['tree']
-    total_nodes = len(index_data['all_chunks'])
-    chapters = len(tree)
+    book = load_book(uploaded_file.getvalue(), chunk_size, chunk_overlap,
+                     force=st.session_state.pop("force_reindex", False))
+    index = book["index"]
+    if not index.chunks:
+        st.error("No readable text found in this PDF — it may be scanned images, which need OCR.")
+        st.stop()
 
+    sections = len({c["heading"] for c in index.chunks if not c["heading"].startswith("Pages ")})
     st.markdown(f"""
     <div class="status-card">
         <div class="status-icon">✅</div>
         <div class="status-text">
-            <div class="main-text">"{book_title}" indexed successfully</div>
-            <div class="sub-text">Chunks persisted in ChromaDB — hybrid retrieval ready.</div>
+            <div class="main-text">"{html.escape(book['title'])}" indexed in {book['seconds']:.1f}s</div>
+            <div class="sub-text">Hybrid search ready — vectors are stored in this session's own ChromaDB collection.</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown(f"""
     <div class="metrics-row">
-        <div class="metric-card"><div class="metric-value">{chunk_count}</div><div class="metric-label">Chunks</div></div>
-        <div class="metric-card"><div class="metric-value">{total_nodes}</div><div class="metric-label">Topic Nodes</div></div>
-        <div class="metric-card"><div class="metric-value">{chapters}</div><div class="metric-label">Chapters</div></div>
+        <div class="metric-card"><div class="metric-value">{len(index.chunks)}</div><div class="metric-label">Chunks</div></div>
+        <div class="metric-card"><div class="metric-value">{max(c['end_page'] for c in index.chunks) + 1}</div><div class="metric-label">Pages</div></div>
+        <div class="metric-card"><div class="metric-value">{sections}</div><div class="metric-label">Sections found</div></div>
     </div>
     """, unsafe_allow_html=True)
 
-    # ── Retrieval scope (ChromaDB metadata filtering) ─────────────────────
-    total_pages = max(c['end_page'] for c in index_data['all_chunks']) + 1
-    collection = vector_store.get_collection()
+    # ── Retrieval scope (metadata filtering) ──────────────────────────────
+    total_pages = max(c['end_page'] for c in index.chunks) + 1
 
     with st.expander("🔎 Retrieval scope", expanded=False):
         scope_pages = st.toggle("Restrict search to a page range", value=False,
@@ -267,37 +308,47 @@ if uploaded_file:
             st.markdown(query)
 
         with st.chat_message("assistant"):
+            history = st.session_state.messages[:-1]
+            t_start = time.perf_counter()
             with st.spinner("🔍 Searching the book..."):
+                search_query = llm.condense_question(client, query, history)
                 chunks = retrieve(
-                    query, index_data,
-                    top_k=top_k, use_reranker=use_reranker,
-                    collection=collection, doc_id=doc_id,
+                    index, search_query, top_k=top_k, method=method, use_reranker=use_reranker,
                     page_start=page_start, page_end=page_end,
                 )
+            t_retrieved = time.perf_counter()
 
-            stream = generate_answer(
-                query, chunks,
-                chat_history=st.session_state.messages[:-1],
-                book_title=book_title
-            )
+            if chunks:
+                messages = llm.build_messages(query, chunks, history, book["title"])
+                response_text = st.write_stream(llm.stream_answer(client, messages))
+            else:
+                response_text = llm.NOT_FOUND
+                st.markdown(response_text)
+            t_answered = time.perf_counter()
 
-            response_text = st.write_stream(
-                (chunk.choices[0].delta.content or "")
-                for chunk in stream
-                if chunk.choices[0].delta.content
-            )
+            citations = llm.check_citations(response_text, len(chunks))
+            if citations["invalid"]:
+                st.warning(f"The answer cites source(s) {citations['invalid']} that weren't retrieved — "
+                           "treat those parts with care.")
+            elif chunks and not citations["cited"] and not citations["abstained"]:
+                st.caption("⚠️ This answer has no source citations.")
+
+            timing = f"⏱ search {t_retrieved - t_start:.2f}s · answer {t_answered - t_retrieved:.2f}s"
+            if search_query != query:
+                timing += f" · searched for: “{search_query}”"
+            st.caption(timing)
 
             with st.expander("📚 View source passages"):
                 for i, c in enumerate(chunks, 1):
-                    topics = ", ".join(c['topic_words']) if c['topic_words'] else "general"
+                    keywords = html.escape(", ".join(c.get("keywords") or [])) or "—"
                     st.markdown(f"""
                     <div class="source-card">
                         <div class="source-header">
                             <span class="source-badge">SOURCE {i}</span>
-                            <span class="source-heading">{c['heading']}</span>
+                            <span class="source-heading">{html.escape(c['heading'])}</span>
                         </div>
-                        <div class="source-meta">📄 Pages {c['start_page']+1}–{c['end_page']+1} &nbsp;•&nbsp; 🏷️ {topics}</div>
-                        <div class="source-preview">{c['text'][:400]}...</div>
+                        <div class="source-meta">📄 Pages {c['start_page']+1}–{c['end_page']+1} &nbsp;•&nbsp; 🏷️ {keywords}</div>
+                        <div class="source-preview">{html.escape(c['text'][:400])}...</div>
                     </div>
                     """, unsafe_allow_html=True)
 
@@ -308,9 +359,9 @@ else:
         <div class="empty-state-icon">📚</div>
         <div class="empty-state-title">No book loaded yet</div>
         <div class="empty-state-desc">
-            Upload a PDF above to begin. NovaBot will automatically index the book,
-            extract chapters and topics, and build a searchable knowledge graph so you
-            can ask natural-language questions and get cited answers instantly.
+            Upload a PDF above to begin. NovaBot splits the book into passages, indexes
+            them for keyword and semantic search, and answers your questions with
+            citations to the pages they came from.
         </div>
     </div>
     """, unsafe_allow_html=True)
