@@ -193,7 +193,9 @@ def evaluate_answers(index, questions, client, method=DEFAULT_METHOD, top_k=5):
         "answer_accuracy": mean([float(c["correct"]) for c in answerable]),
         "abstention_on_unanswerable": mean([float(c["abstained"]) for c in unanswerable]),
         "false_abstention_rate": mean([float(c["abstained"]) for c in answerable]),
-        "citation_validity": mean([float(not c["invalid_citations"]) for c in cases]),
+        "citation_rate": mean([float(bool(c["cited"])) for c in answered]),
+        # Only answers that cite something can be valid or invalid.
+        "citation_validity": mean([float(not c["invalid_citations"]) for c in cases if c["cited"]]),
         "citation_support": mean([float(c["citation_supported"]) for c in answered]),
         "faithfulness": mean([float(v) for v in judged]),
         "faithfulness_judged": len(judged),
@@ -217,14 +219,38 @@ def markdown(report):
     if "answers" in report:
         a = report["answers"]
         lines += ["", f"**Answers** (method `{a['method']}`, top-5 passages)", "",
-                  "| Answer accuracy | Abstains when unanswerable | False abstentions | Citation validity | "
-                  "Citation support | Faithfulness | Latency p50 / p95 | Tokens / answer |",
-                  "|---|---|---|---|---|---|---|---|",
+                  "| Answer accuracy | Abstains when unanswerable | False abstentions | Answers with citations | "
+                  "Citation validity | Citation support | Faithfulness | Latency p50 / p95 | Tokens / answer |",
+                  "|---|---|---|---|---|---|---|---|---|",
                   f"| {a['answer_accuracy']} | {a['abstention_on_unanswerable']} | {a['false_abstention_rate']} | "
-                  f"{a['citation_validity']} | {a['citation_support']} | {a['faithfulness']} "
+                  f"{a['citation_rate']} | {a['citation_validity']} | {a['citation_support']} | {a['faithfulness']} "
                   f"({a['faithfulness_judged']} judged) | {a['answer_latency_s_p50']}s / {a['answer_latency_s_p95']}s | "
                   f"{a['tokens_per_answer']} |"]
+        problems = answer_issues(a["cases"])
+        if problems:
+            lines += ["", f"<details><summary>{len(problems)} misses and uncited answers</summary>", "", *problems,
+                      "", "</details>"]
     return "\n".join(lines)
+
+
+def answer_issues(cases):
+    """One line per case worth a look: wrong, wrongly refused, not refused, or uncited."""
+    lines = []
+    for c in cases:
+        if c["type"] == "unanswerable":
+            label = None if c["abstained"] else "did not abstain"
+        elif c["abstained"]:
+            label = "false abstention"
+        elif not c["correct"]:
+            label = "wrong answer"
+        elif not c["cited"]:
+            label = "no citation detected"
+        else:
+            label = None
+        if label:
+            answer = " ".join(c["answer"].split())[:200].replace("|", "/")
+            lines.append(f"- **{label}** — #{c['id']} {c['question']} → {answer}")
+    return lines
 
 
 def main():
@@ -270,12 +296,6 @@ def main():
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
     table = markdown(report)
     print(table)
-    if "answers" in report:
-        for case in report["answers"]["cases"]:
-            if case["type"] != "unanswerable" and not case["correct"]:
-                print(f"  MISS {case['id']}: {case['question']} -> {case['answer'][:120]!r}")
-            if case["type"] == "unanswerable" and not case["abstained"]:
-                print(f"  DID NOT ABSTAIN {case['id']}: {case['question']} -> {case['answer'][:120]!r}")
     print(f"\nFull results: {out}")
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
