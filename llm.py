@@ -141,12 +141,27 @@ def build_messages(question, chunks, chat_history=None, book_title=None):
     return messages
 
 
-_CITATION = re.compile(r"\[\s*Source\s+(\d+)\s*\]", re.IGNORECASE)
+# "Source 1", "Sources 2 and 4", "Source 1, 3", "Sources 1-3", in any brackets ([...], (...), 【...】).
+_CITATION = re.compile(r"\bsources?\s*#?\s*(\d+(?:\s*(?:,|&|and|-|–)\s*\d+)*)", re.IGNORECASE)
+# gpt-oss style "【1†source】" / "【2†L3-L5】".
+_DAGGER_CITATION = re.compile(r"【\s*(\d+)\s*†")
+_NUMBER_OR_RANGE = re.compile(r"(\d+)\s*[-–]\s*(\d+)|(\d+)")
+
+
+def _cited_numbers(answer):
+    cited = {int(n) for n in _DAGGER_CITATION.findall(answer)}
+    for group in _CITATION.findall(answer):
+        for start, end, single in _NUMBER_OR_RANGE.findall(group):
+            if single:
+                cited.add(int(single))
+            elif int(end) - int(start) < 20:
+                cited.update(range(int(start), int(end) + 1))
+    return cited
 
 
 def check_citations(answer, n_sources):
     """Which sources an answer cites, and whether any citation points past the provided passages."""
-    cited = sorted({int(n) for n in _CITATION.findall(answer or "")})
+    cited = sorted(_cited_numbers(answer or ""))
     return {
         "cited": cited,
         "invalid": [n for n in cited if not 1 <= n <= n_sources],

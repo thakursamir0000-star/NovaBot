@@ -8,6 +8,7 @@ from evaluation.evaluate import (
     DEFAULT_QUESTIONS,
     EVAL_CHUNK_SIZE,
     EVAL_OVERLAP,
+    answer_issues,
     evaluate_answers,
     evaluate_retrieval,
     includes_facts,
@@ -76,6 +77,23 @@ def test_answer_evaluation_scores_cases(handbook_index):
     assert report["answer_accuracy"] == 1.0
     assert report["abstention_on_unanswerable"] == 1.0
     assert report["false_abstention_rate"] == 0.0
+    assert report["citation_rate"] == 1.0
+    assert report["citation_validity"] == 1.0
     assert report["citation_support"] == 1.0
     assert report["faithfulness"] == 1.0
     assert report["tokens_per_answer"] == 42
+    assert answer_issues(report["cases"]) == []
+
+
+def test_issues_list_flags_each_problem():
+    base = {"question": "q", "answer": "a | b", "cited": [1], "abstained": False, "correct": True}
+    cases = [
+        {**base, "id": 1, "type": "keyword"},
+        {**base, "id": 2, "type": "keyword", "correct": False},
+        {**base, "id": 3, "type": "keyword", "abstained": True},
+        {**base, "id": 4, "type": "keyword", "cited": []},
+        {**base, "id": 5, "type": "unanswerable"},
+        {**base, "id": 6, "type": "unanswerable", "abstained": True},
+    ]
+    labels = [line.split("**")[1] for line in answer_issues(cases)]
+    assert labels == ["wrong answer", "false abstention", "no citation detected", "did not abstain"]
