@@ -17,8 +17,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
 METHOD_LABELS = {
-    "rrf": "Hybrid — Reciprocal Rank Fusion",
     "weighted": "Hybrid — weighted scores",
+    "rrf": "Hybrid — Reciprocal Rank Fusion",
     "bm25": "Keywords only (BM25)",
     "semantic": "Semantic only",
 }

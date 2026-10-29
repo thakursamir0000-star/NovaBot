@@ -1,3 +1,5 @@
+import pytest
+
 import llm
 from tests.conftest import FakeClient, FakeStream, make_chunk
 
@@ -9,6 +11,22 @@ class Missing(Exception):
 def test_check_citations():
     result = llm.check_citations("Every 90 days [Source 1][source 3], see [Source 7].", n_sources=5)
     assert result == {"cited": [1, 3, 7], "invalid": [7], "abstained": False}
+
+
+@pytest.mark.parametrize("answer, cited", [
+    ("Every 90 days [Source 2].", [2]),
+    ("Every 90 days 【Source 2】.", [2]),
+    ("Every 90 days (Source 2).", [2]),
+    ("Every 90 days [Source 1, 3].", [1, 3]),
+    ("Every 90 days [Sources 2 and 4].", [2, 4]),
+    ("Every 90 days [Sources 1-3].", [1, 2, 3]),
+    ("Every 90 days 【1†source】 and 【4†L2-L3】.", [1, 4]),
+    ("Every 90 days, see Source 5 | Pages 3–4.", [5]),
+    ("Every 90 days.", []),
+    ("Replaced 2-3 times a year (no source).", []),
+])
+def test_citation_formats(answer, cited):
+    assert llm.check_citations(answer, n_sources=5)["cited"] == cited
 
 
 def test_abstention_detection():
