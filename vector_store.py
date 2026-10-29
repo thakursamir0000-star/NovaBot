@@ -1,116 +1,136 @@
-import chromadb
-import re
-import unicodedata
+"""Vector stores for chunk embeddings.
 
-# Persistent ChromaDB store — survives Streamlit restarts, no server needed.
+- ChromaStore: persistent ChromaDB collection (used by the app). Each browser
+  session gets its own collection, and collections older than a day are
+  deleted, so one visitor's PDF is never searchable by another and the store
+  doesn't grow forever.
+- InMemoryStore: NumPy matrix with the same interface (tests, evaluation, and
+  a fallback when ChromaDB isn't installed).
+
+Both return [(chunk_index, cosine_similarity)] for the top-n chunks of one
+document, optionally limited to a page range.
+"""
+import time
+
+import numpy as np
+
 CHROMA_PATH = "./chroma_db"
-COLLECTION_NAME = "novabot_chunks"
-
-_client = None
-_collection = None
-
-
-def _sanitize(text: str) -> str:
-    """Strip non-ASCII characters that trip ChromaDB's encoder."""
-    text = unicodedata.normalize("NFKD", text)
-    text = text.encode("ascii", "ignore").decode("ascii")
-    text = re.sub(r"[^\x20-\x7E\n\r\t]", " ", text)
-    return re.sub(r" {2,}", " ", text).strip()
+SESSION_PREFIX = "session_"
+MAX_AGE_HOURS = 24
+_ADD_BATCH = 1000  # ChromaDB rejects very large single add() calls
 
 
-def get_client() -> chromadb.PersistentClient:
-    """Lazily open the persistent client once per process."""
-    global _client
-    if _client is None:
-        print(f"[vector] Opening persistent ChromaDB at {CHROMA_PATH}")
-        _client = chromadb.PersistentClient(path=CHROMA_PATH)
-    return _client
+def _in_pages(start_page, end_page, page_start, page_end):
+    return (page_start is None or end_page >= page_start) and (page_end is None or start_page <= page_end)
 
 
-def get_collection():
-    """Get (or create) the shared chunk collection. Cosine distance metric."""
-    global _collection
-    if _collection is None:
-        _collection = get_client().get_or_create_collection(
-            name=COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"},
+class InMemoryStore:
+    def __init__(self):
+        self._docs = {}
+
+    def has(self, doc_id):
+        return doc_id in self._docs
+
+    def add(self, doc_id, chunks, vectors):
+        pages = [(int(c["start_page"]), int(c["end_page"])) for c in chunks]
+        self._docs[doc_id] = (np.asarray(vectors, dtype=np.float32), pages)
+
+    def delete(self, doc_id):
+        self._docs.pop(doc_id, None)
+
+    def query(self, doc_id, vector, n, page_start=None, page_end=None):
+        if doc_id not in self._docs:
+            return []
+        matrix, pages = self._docs[doc_id]
+        sims = matrix @ np.asarray(vector, dtype=np.float32)
+        results = []
+        for i in np.argsort(-sims):
+            if _in_pages(*pages[i], page_start, page_end):
+                results.append((int(i), float(sims[i])))
+                if len(results) >= n:
+                    break
+        return results
+
+
+class ChromaStore:
+    def __init__(self, collection_name, path=CHROMA_PATH):
+        import chromadb
+
+        self._client = chromadb.PersistentClient(path=path)
+        self._collection = self._client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine", "created_at": time.time()},
         )
-        print(f"[vector] Using collection '{COLLECTION_NAME}' (count={_collection.count()})")
-    return _collection
+
+    def has(self, doc_id):
+        found = self._collection.get(where={"doc_id": doc_id}, limit=1, include=["metadatas"])
+        return len(found["ids"]) > 0
+
+    def add(self, doc_id, chunks, vectors):
+        # Only vectors + metadata are stored; chunk text stays in memory, which also
+        # avoids the encoder errors raw PDF Unicode used to cause here.
+        ids = [f"{doc_id}:{i}" for i in range(len(chunks))]
+        metadatas = [
+            {"doc_id": doc_id, "chunk": i, "start_page": int(c["start_page"]), "end_page": int(c["end_page"])}
+            for i, c in enumerate(chunks)
+        ]
+        vectors = np.asarray(vectors, dtype=np.float32)
+        for s in range(0, len(ids), _ADD_BATCH):
+            e = s + _ADD_BATCH
+            self._collection.add(ids=ids[s:e], embeddings=vectors[s:e].tolist(), metadatas=metadatas[s:e])
+
+    def delete(self, doc_id):
+        self._collection.delete(where={"doc_id": doc_id})
+
+    def query(self, doc_id, vector, n, page_start=None, page_end=None):
+        conditions = [{"doc_id": {"$eq": doc_id}}]
+        if page_start is not None:
+            conditions.append({"end_page": {"$gte": int(page_start)}})
+        if page_end is not None:
+            conditions.append({"start_page": {"$lte": int(page_end)}})
+        where = conditions[0] if len(conditions) == 1 else {"$and": conditions}
+
+        total = self._collection.count()
+        if total == 0:
+            return []
+        # Ask the HNSW index for the top-n only (it used to fetch every chunk).
+        result = self._collection.query(
+            query_embeddings=[np.asarray(vector, dtype=np.float32).tolist()],
+            n_results=min(n, total),
+            where=where,
+            include=["metadatas", "distances"],
+        )
+        return [
+            (int(meta["chunk"]), max(0.0, 1.0 - float(dist)))
+            for meta, dist in zip(result["metadatas"][0], result["distances"][0])
+        ]
 
 
-def is_indexed(doc_id: str) -> bool:
-    """True if any chunks for this doc_id are already persisted."""
-    res = get_collection().get(where={"doc_id": doc_id}, limit=1, include=["metadatas"])
-    return len(res["ids"]) > 0
+def cleanup_stale_sessions(path=CHROMA_PATH, max_age_hours=MAX_AGE_HOURS):
+    """Delete per-session collections older than `max_age_hours`. Returns how many were removed."""
+    import chromadb
+
+    client = chromadb.PersistentClient(path=path)
+    cutoff = time.time() - max_age_hours * 3600
+    removed = 0
+    for item in client.list_collections():
+        name = item if isinstance(item, str) else item.name  # API differs across chromadb versions
+        if not name.startswith(SESSION_PREFIX):
+            continue
+        try:
+            created = float((client.get_collection(name).metadata or {}).get("created_at", 0))
+        except Exception:
+            continue
+        if created < cutoff:
+            client.delete_collection(name)
+            removed += 1
+    return removed
 
 
-def delete_document(doc_id: str) -> None:
-    """Remove every chunk belonging to a doc (used by re-index)."""
-    get_collection().delete(where={"doc_id": doc_id})
-    print(f"[vector] Deleted doc '{doc_id}' from ChromaDB.")
-
-
-def index_document(doc_id: str, chunks: list, embeddings, force: bool = False) -> bool:
-    """
-    Persist chunk embeddings to ChromaDB.
-
-    Skips (and returns False) when the doc is already indexed, unless
-    `force` is True, in which case the old vectors are replaced.
-
-    Args:
-        doc_id: stable identifier for the uploaded PDF
-        chunks: list of {heading, text, start_page, end_page, ...}
-        embeddings: (n_chunks, dim) numpy array
-        force: if True, delete existing vectors for doc_id before adding
-    """
-    col = get_collection()
-    if not force and is_indexed(doc_id):
-        print(f"[vector] Doc '{doc_id}' already indexed — skipping.")
-        return False
-    if force:
-        delete_document(doc_id)
-
-    ids, documents, metadatas = [], [], []
-    for i, (chunk, _emb) in enumerate(zip(chunks, embeddings)):
-        ids.append(f"{doc_id}:{i}")
-        documents.append(_sanitize(chunk["text"]))
-        metadatas.append({
-            "doc_id": doc_id,
-            "global_idx": i,
-            "start_page": int(chunk["start_page"]),
-            "end_page": int(chunk["end_page"]),
-        })
-
-    col.add(
-        ids=ids,
-        embeddings=embeddings.tolist(),
-        documents=documents,
-        metadatas=metadatas,
-    )
-    print(f"[vector] Indexed {len(ids)} chunks for doc '{doc_id}'.")
-    return True
-
-
-def query_semantic(query_embedding, n_results: int, where: dict = None) -> dict:
-    """
-    Query the store for the n_results nearest chunks.
-
-    Args:
-        query_embedding: (dim,) numpy array
-        n_results: number of neighbors to return
-        where: ChromaDB metadata filter (e.g. {"doc_id": ..., "page": ...})
-
-    Returns:
-        raw ChromaDB response dict with keys: ids, distances, metadatas
-    """
-    col = get_collection()
-    total = col.count()
-    if total == 0:
-        return None
-    return col.query(
-        query_embeddings=[query_embedding.tolist()],
-        n_results=min(n_results, total),
-        where=where,
-        include=["metadatas", "distances"],
-    )
+def session_store(session_id):
+    """Per-session ChromaDB store, or an in-memory store if ChromaDB is unavailable."""
+    try:
+        return ChromaStore(f"{SESSION_PREFIX}{session_id}")
+    except ImportError:
+        print("[vector] chromadb not installed — using in-memory vectors")
+        return InMemoryStore()
