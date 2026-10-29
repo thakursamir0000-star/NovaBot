@@ -1,119 +1,103 @@
-import PyPDF2
+"""PDF ingestion: page text, book title, and sliding-window chunks."""
+import hashlib
 import re
 
+from pypdf import PdfReader
 
-def extract_text_by_page(pdf_path: str) -> dict:
+# A heading is a short line that starts with Chapter/Part/Section/Appendix + a number.
+# Checked per line, so in-text mentions like "see Chapter 5" don't count.
+_HEADING = re.compile(r"^(chapter|part|section|appendix)\s+([0-9]+|[ivxlc]+|[a-z])\b.{0,70}$", re.IGNORECASE)
+
+
+def document_id(pdf_bytes, chunk_size, overlap):
+    """Stable ID for one PDF *and* one chunking setup.
+
+    Including the chunk settings means changing a slider builds a new index
+    instead of reusing vectors that belong to differently cut chunks.
     """
-    Reads every page of the PDF.
-    Returns {page_number (int): page_text (str)}
-    """
+    digest = hashlib.sha1(pdf_bytes).hexdigest()[:12]
+    return f"{digest}-{chunk_size}-{overlap}"
+
+
+def extract_text_by_page(pdf_path):
+    """Return {page_number (0-based): page_text}."""
+    reader = PdfReader(pdf_path)
     pages = {}
-    with open(pdf_path, "rb") as f:
-        reader = PyPDF2.PdfReader(f)
-        total = len(reader.pages)
-        for i in range(total):
-            text = reader.pages[i].extract_text()
-            pages[i] = text if text else ""
-    print(f"[ingest] Extracted {total} pages.")
+    for i, page in enumerate(reader.pages):
+        try:
+            pages[i] = page.extract_text() or ""
+        except Exception as e:  # one broken page shouldn't sink the whole book
+            print(f"[ingest] Could not read page {i + 1}: {e}")
+            pages[i] = ""
+    print(f"[ingest] Extracted {len(pages)} pages.")
     return pages
 
 
-def extract_book_title(pdf_path: str) -> str:
-    """
-    Try to extract book title from PDF metadata or first page content.
-    Returns a human-readable title string.
-    """
+def extract_book_title(pdf_path):
+    """Title from PDF metadata, else the first substantial line of page 1."""
     try:
-        with open(pdf_path, "rb") as f:
-            reader = PyPDF2.PdfReader(f)
-            # Try PDF metadata first
-            metadata = reader.metadata
-            if metadata and metadata.title and len(metadata.title.strip()) > 3:
-                return metadata.title.strip()
-            # Fall back to first page — take first substantial line
-            first_page = reader.pages[0].extract_text() or ""
-            lines = [l.strip() for l in first_page.split('\n') if l.strip()]
-            for line in lines[:8]:
-                if 10 < len(line) < 120 and not line.startswith(('http', 'www')):
-                    return line
+        reader = PdfReader(pdf_path)
+        metadata = reader.metadata
+        if metadata and metadata.title and len(metadata.title.strip()) > 3:
+            return metadata.title.strip()
+        first_page = reader.pages[0].extract_text() or ""
+        lines = [line.strip() for line in first_page.split("\n") if line.strip()]
+        for line in lines[:8]:
+            if 10 < len(line) < 120 and not line.startswith(("http", "www")):
+                return line
     except Exception as e:
         print(f"[ingest] Could not extract title: {e}")
     return "the uploaded book"
 
 
-def chunk_with_overlap(pages: dict, chunk_size: int = 500, overlap: int = 100) -> list:
+def safe_overlap(chunk_size, overlap):
+    """Overlap must stay well below chunk size, or the window barely moves and
+    the chunk count explodes (overlap >= size used to mean a chunk per word)."""
+    return max(0, min(int(overlap), int(chunk_size) // 2))
+
+
+def chunk_with_overlap(pages, chunk_size=500, overlap=100):
+    """Sliding-window chunks of `chunk_size` words with `overlap` words shared.
+
+    Each chunk records its page span and the most recent heading seen before it,
+    so sources can show "Chapter 3: ..." instead of only page numbers.
+
+    Returns a list of {heading, text, start_page, end_page}.
     """
-    Sliding-window chunking with configurable overlap.
+    overlap = safe_overlap(chunk_size, overlap)
+    words = []  # (word, page, heading)
+    heading = None
+    for page_num in sorted(pages):
+        for line in (pages[page_num] or "").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if _HEADING.match(line):
+                heading = line[:80]
+            words.extend((w, page_num, heading) for w in line.split())
 
-    Improvements over the old regex-based approach:
-      1. Works with ANY PDF, not just one book format
-      2. Overlapping windows prevent context loss at chunk boundaries
-      3. Tracks page spans accurately per chunk
-      4. Detects chapter/section headings as metadata (not for splitting)
-
-    Args:
-        pages: {page_num: text} from extract_text_by_page
-        chunk_size: number of words per chunk
-        overlap: number of overlapping words between consecutive chunks
-
-    Returns:
-        list of dicts: {heading, text, start_page, end_page}
-    """
-    # Build a list of (word, page_num) to track page boundaries
-    word_pages = []
-    for page_num in sorted(pages.keys()):
-        text = pages[page_num]
-        if not text:
-            continue
-        words = text.split()
-        for word in words:
-            word_pages.append((word, page_num))
-
-    if not word_pages:
-        return []
-
-    # Heading patterns — used for labeling, NOT for splitting
-    heading_pattern = re.compile(
-        r'(?:^|\s)(Chapter\s+\d+[^a-z]{0,60}'
-        r'|Part\s+[IVX\d]+[^a-z]{0,60}'
-        r'|Appendix\s+[A-Z][^a-z]{0,60}'
-        r'|CHAPTER\s+\d+[^a-z]{0,60})',
-        re.IGNORECASE
-    )
-
-    # Build chunks with sliding window
     chunks = []
-    total_words = len(word_pages)
     step = max(chunk_size - overlap, 1)
-
-    i = 0
-    while i < total_words:
-        end = min(i + chunk_size, total_words)
-        chunk_words = word_pages[i:end]
-
-        text = " ".join(w for w, _ in chunk_words)
-        start_page = chunk_words[0][1]
-        end_page = chunk_words[-1][1]
-
-        # Try to find a heading in this chunk for context
-        heading_match = heading_pattern.search(text)
-        if heading_match:
-            heading = heading_match.group(0).strip()[:80]
+    for start in range(0, len(words), step):
+        window = words[start:start + chunk_size]
+        first_page, last_page = window[0][1], window[-1][1]
+        if len(window) < 20 and chunks:
+            # A tiny tail: fold the words the previous chunk doesn't have into it.
+            new_words = words[max(start, chunks[-1]["_end"]):start + chunk_size]
+            chunks[-1]["text"] += " " + " ".join(w for w, _, _ in new_words)
+            chunks[-1]["end_page"] = last_page
         else:
-            heading = f"Section (Pages {start_page + 1}\u2013{end_page + 1})"
-
-        # Skip tiny fragments
-        if len(text.split()) >= 20:
             chunks.append({
-                "heading": heading,
-                "text": text,
-                "start_page": start_page,
-                "end_page": end_page,
+                "heading": window[0][2] or f"Pages {first_page + 1}–{last_page + 1}",
+                "text": " ".join(w for w, _, _ in window),
+                "start_page": first_page,
+                "end_page": last_page,
+                "_end": start + len(window),
             })
-
-        if end >= total_words:
+        if start + chunk_size >= len(words):
             break
-        i += step
 
+    for chunk in chunks:
+        chunk.pop("_end", None)
     print(f"[ingest] Created {len(chunks)} chunks (size={chunk_size}, overlap={overlap}).")
     return chunks

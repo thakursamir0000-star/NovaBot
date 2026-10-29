@@ -1,0 +1,44 @@
+{"id": 1, "type": "keyword", "question": "When was Orion Valley Research Station founded?", "evidence": "was founded in 1987", "must_include": ["1987"]}
+{"id": 2, "type": "paraphrase", "question": "Who runs the station as its director?", "evidence": "The station director is Dr. Imani Okafor", "must_include": ["okafor"]}
+{"id": 3, "type": "paraphrase", "question": "How many researchers can sleep at the station overnight?", "evidence": "up to 42 overnight researchers", "must_include": ["42"]}
+{"id": 4, "type": "paraphrase", "question": "How far away is the closest town?", "evidence": "Brennick, 38 km south", "must_include": ["38"]}
+{"id": 5, "type": "paraphrase", "question": "Which days does the shuttle bus go up to the station?", "evidence": "runs on Tuesdays and Fridays", "must_include": ["tuesday", "friday"]}
+{"id": 6, "type": "keyword", "question": "When does Route 9 close?", "evidence": "snow depth on the pass exceeds 40 cm", "must_include": ["40 cm"]}
+{"id": 7, "type": "keyword", "question": "What badge colour do contractors get?", "evidence": "orange badges are for contractors", "must_include": ["orange"]}
+{"id": 8, "type": "keyword", "question": "When are quiet hours at the station?", "evidence": "Quiet hours run from 22:00 to 06:00", "must_include": [["22:00", "10 pm", "10pm", "10:00 pm"]]}
+{"id": 9, "type": "paraphrase", "question": "How far in advance should I tell the kitchen about dietary needs?", "evidence": "at least 48 hours in advance", "must_include": ["48"]}
+{"id": 10, "type": "paraphrase", "question": "How often do the sediment filter cartridges need swapping?", "evidence": "sediment cartridges are replaced every 90 days", "must_include": ["90"]}
+{"id": 11, "type": "paraphrase", "question": "How often is the ultraviolet lamp changed?", "evidence": "ultraviolet lamp is replaced every 12 months", "must_include": [["12 months", "once a year", "annually", "every year", "twelve months"]]}
+{"id": 12, "type": "keyword", "question": "When are the backup generators test-run?", "evidence": "first Monday of every month", "must_include": ["first monday"]}
+{"id": 13, "type": "paraphrase", "question": "How long can the station run on its diesel reserve?", "evidence": "enough for about 18 days at full load", "must_include": ["18"]}
+{"id": 14, "type": "keyword", "question": "What does alarm code F-17 mean?", "evidence": "alarm code F-17", "must_include": [["ajar", "open"]]}
+{"id": 15, "type": "paraphrase", "question": "What is the ultra-low freezer called?", "evidence": "The freezer is nicknamed Polaris", "must_include": ["polaris"]}
+{"id": 16, "type": "paraphrase", "question": "On which day are the sharps bins emptied?", "evidence": "collected every Thursday", "must_include": ["thursday"]}
+{"id": 17, "type": "keyword", "question": "What is the maximum booking length for the confocal microscope?", "evidence": "maximum block of 4 hours", "must_include": [["4 hours", "four hours"]]}
+{"id": 18, "type": "keyword", "question": "Who has to approve drone flights?", "evidence": "approval from the station safety officer, Tomasz Wierzbicki", "must_include": ["wierzbicki"]}
+{"id": 19, "type": "paraphrase", "question": "What is the altitude limit for drones?", "evidence": "may not fly higher than 120 m", "must_include": ["120"]}
+{"id": 20, "type": "paraphrase", "question": "What happens if a field team is an hour late returning?", "evidence": "the duty manager starts the search protocol called Lantern", "must_include": ["lantern"]}
+{"id": 21, "type": "keyword", "question": "What frequency is the emergency radio channel?", "evidence": "151.625 MHz", "must_include": ["151.625"]}
+{"id": 22, "type": "paraphrase", "question": "What should I do if thunder comes less than 30 seconds after lightning?", "evidence": "descend below the treeline", "must_include": ["treeline"]}
+{"id": 23, "type": "paraphrase", "question": "How much distance should I keep from a bear?", "evidence": "at least 100 m away from bears", "must_include": ["100"]}
+{"id": 24, "type": "paraphrase", "question": "Where do I log wildlife sightings?", "evidence": "Report every large-animal sighting in the WildLog app", "must_include": ["wildlog"]}
+{"id": 25, "type": "paraphrase", "question": "At what time is instrument data uploaded to the server each night?", "evidence": "every night at 02:00", "must_include": [["02:00", "2:00", "2 am", "2am"]]}
+{"id": 26, "type": "keyword", "question": "What naming convention should data files use?", "evidence": "naming convention YYYYMMDD_site_instrument", "must_include": ["yyyymmdd_site_instrument"]}
+{"id": 27, "type": "paraphrase", "question": "Who should I contact with questions about data storage?", "evidence": "data steward, Priya Raman", "must_include": ["priya raman"]}
+{"id": 28, "type": "keyword", "question": "Which wetland transect is closed, and until when?", "evidence": "Transect WT-3 is closed for restoration until 2027", "must_include": ["wt-3", "2027"]}
+{"id": 29, "type": "keyword", "question": "Where is the helicopter landing pad?", "evidence": "the landing pad, H1, is behind the Larkspur cabin", "must_include": ["larkspur"]}
+{"id": 30, "type": "paraphrase", "question": "Which form do I use to report an accident?", "evidence": "using form IR-2", "must_include": ["ir-2"]}
+{"id": 31, "type": "paraphrase", "question": "How long do I have to submit my site report after leaving?", "evidence": "within 30 days of departure", "must_include": ["30"]}
+{"id": 32, "type": "keyword", "question": "How much is the carbon offset fee per visit?", "evidence": "carbon offset fee of 12 euros", "must_include": [["12 euros", "€12", "12 eur", "12€"]]}
+{"id": 33, "type": "unanswerable", "question": "Is there Wi-Fi in the cabins?"}
+{"id": 34, "type": "unanswerable", "question": "What is the station's annual budget?"}
+{"id": 35, "type": "unanswerable", "question": "Can I bring my dog to the station?"}
+{"id": 36, "type": "unanswerable", "question": "Who founded the Halvorsen Institute?"}
+{"id": 37, "type": "unanswerable", "question": "How much does a shuttle ticket cost?"}
+{"id": 38, "type": "unanswerable", "question": "How many bird species have been recorded at the station?"}
+{"id": 39, "type": "paraphrase", "question": "What is the most frequent way people get hurt here?", "evidence": "The most common injury at the station is a twisted ankle", "must_include": ["ankle"]}
+{"id": 40, "type": "paraphrase", "question": "When should I expect afternoon storms?", "evidence": "Thunderstorms are common on July and August afternoons", "must_include": ["july", "august"]}
+{"id": 41, "type": "paraphrase", "question": "How do I get up the mountain in winter when cars can't drive?", "evidence": "the only way up is the Skyline Lift", "must_include": ["skyline"]}
+{"id": 42, "type": "paraphrase", "question": "How long would an ambulance trip to the medical centre take?", "evidence": "about 50 minutes away by road", "must_include": ["50"]}
+{"id": 43, "type": "paraphrase", "question": "What is the rule about throwaway packaging?", "evidence": "zero single-use plastics policy since 2021", "must_include": ["single-use"]}
+{"id": 44, "type": "paraphrase", "question": "What protective gear do I need for wet chemistry?", "evidence": "Lab coats and eye protection are mandatory in the wet lab", "must_include": ["lab coat", "eye protection"]}
