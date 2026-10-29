@@ -18,7 +18,7 @@ SYSTEM_PROMPT = """You are an expert assistant helping users understand {book}.
 
 Rules:
 - Answer ONLY using the numbered context passages.
-- Cite the passages you use, e.g. [Source 1] or [Source 2][Source 3].
+- Put a citation after every sentence or bullet point, e.g. [Source 1] or [Source 2][Source 3].
 - If the passages do not contain the answer, reply with exactly: "{not_found}" and nothing else.
 - Be concise and accurate; use bullet points for lists and steps.
 - Use the conversation history only to understand what the user is referring to."""
@@ -169,8 +169,20 @@ def check_citations(answer, n_sources):
     }
 
 
+_PUNCTUATION = str.maketrans({
+    "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-", "−": "-",
+    "‘": "'", "’": "'", "“": '"', "”": '"', " ": " ", " ": " ",
+})
+
+
+def fold_punctuation(text):
+    """Map typographic variants models like to emit (non-breaking hyphen in "WT‑3",
+    en/em dashes, curly quotes, narrow spaces) to their plain ASCII forms."""
+    return str(text).translate(_PUNCTUATION)
+
+
 def is_abstention(answer):
-    text = (answer or "").strip().lower()
+    text = fold_punctuation(answer or "").strip().lower()
     return text.startswith(NOT_FOUND.lower().rstrip(".")) or "couldn't find this in the book" in text
 
 

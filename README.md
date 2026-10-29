@@ -134,6 +134,7 @@ How it got here (two CI runs, same questions):
 
 - **Citation support 0.14 → 0.97 was a measurement bug, not better answers.** The first parser only recognised the exact `[Source N]` form, but gpt-oss often writes `【Source 1】`, `[Source 1, 3]` or `【1†source】`. Answers were already judged fully faithful; once the parser accepted these formats, the citations were found.
 - **Accuracy and false abstentions improved with the switch to weighted retrieval**, which puts the right passage in front of the LLM more often. LLM output also varies a little between runs (temperature 0.2), so small differences shouldn't be over-read.
+- **The 3 "wrong answers" left in that run were grading errors.** The model wrote non-breaking hyphens (`WT‑3`, `IR‑2`, `single‑use` with U+2011), which the key-fact matcher didn't treat as `-`. With the matcher fixed, the same answers score 38 / 38. The one uncited answer (#41) was correct too; the prompt now asks for a citation after every sentence. The next CI run re-measures both.
 - The CI summary lists the remaining misses and uncited answers for each run.
 
 ## 🚀 Getting Started

@@ -74,7 +74,8 @@ def load_questions(path):
 
 
 def normalize(text):
-    return re.sub(r"[\s*`]+", "", str(text).lower())
+    """Lowercase, fold typographic dashes/quotes to ASCII, drop whitespace and markdown."""
+    return re.sub(r"[\s*`]+", "", llm.fold_punctuation(text).lower())
 
 
 def relevant_chunks(index, evidence):
