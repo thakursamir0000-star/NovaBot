@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <em>Hybrid retrieval (BM25 + embeddings) · cross-encoder reranking · ChromaDB · Groq · 92.1% answer accuracy, 100% refusal on unanswerable questions, 0 unsupported claims — measured in CI</em>
+  <em>Hybrid retrieval (BM25 + embeddings) · cross-encoder reranking · ChromaDB · Groq · 38 / 38 answers correct and cited, 100% refusal on unanswerable questions, 0 unsupported claims — measured in CI</em>
 </p>
 
 <p align="center">
@@ -89,7 +89,7 @@ CI runs the retrieval evaluation with the real models on every push and posts th
 
 ### Results
 
-Measured by CI on 2026-10-29: `all-MiniLM-L6-v2` embeddings, `ms-marco-MiniLM-L-6-v2` reranker, `openai/gpt-oss-120b` via Groq; the handbook cut into 32 chunks.
+Measured by CI on 2026-10-31: `all-MiniLM-L6-v2` embeddings, `ms-marco-MiniLM-L-6-v2` reranker, `openai/gpt-oss-120b` via Groq; the handbook cut into 32 chunks.
 
 **Retrieval** (38 answerable questions)
 
@@ -99,8 +99,8 @@ Measured by CI on 2026-10-29: `all-MiniLM-L6-v2` embeddings, `ms-marco-MiniLM-L-
 | Semantic only | 0.763 | 1.000 | 1.000 | 0.873 | 0.877 | 1.000 | 1.000 | 10 ms |
 | **Weighted hybrid (default)** | **0.842** | 0.974 | **1.000** | **0.910** | **0.908** | 1.000 | 1.000 | 10 ms |
 | RRF hybrid | 0.789 | 0.895 | 0.974 | 0.866 | 0.863 | 1.000 | 0.960 | 10 ms |
-| Weighted + rerank | 0.895 | 0.974 | 1.000 | 0.941 | 0.940 | 1.000 | 1.000 | 348 ms |
-| RRF + rerank | 0.895 | 0.974 | 1.000 | 0.940 | 0.939 | 1.000 | 1.000 | 362 ms |
+| Weighted + rerank | 0.895 | 0.974 | 1.000 | 0.941 | 0.940 | 1.000 | 1.000 | 345 ms |
+| RRF + rerank | 0.895 | 0.974 | 1.000 | 0.940 | 0.939 | 1.000 | 1.000 | 364 ms |
 
 What this shows:
 - **Keywords alone aren't enough.** BM25 misses 24% of the reworded questions; semantic search finds all of them in the top 5.
@@ -113,28 +113,29 @@ What this shows:
 
 | Metric | Result |
 |---|---|
-| Answer accuracy (key facts present) | **0.921** (35 / 38) |
+| Answer accuracy (key facts present) | **1.00** (38 / 38) |
 | Says "I couldn't find this in the book" for unanswerable questions | **1.00** (6 / 6) |
 | False abstentions (refused an answerable question) | **0.00** (0 / 38) |
 | Faithfulness (LLM judge: every claim supported by the passages) | **1.00** (38 / 38 answers judged) |
-| Answers with a citation | 0.974 (37 / 38) |
+| Answers with a citation | **1.00** (38 / 38) |
 | Citation validity (no citation to a passage that wasn't retrieved) | 1.00 |
-| Citation support (a cited passage contains the evidence) | 0.974 |
-| Answer latency p50 / p95 | 3.7 s / 6.5 s |
-| Tokens per answer | ~734 |
+| Citation support (a cited passage contains the evidence) | **1.00** |
+| Answer latency p50 / p95 | 5.4 s / 6.6 s |
+| Tokens per answer | ~740 |
 
-How it got here (two CI runs, same questions):
+How it got here (three CI runs, same questions):
 
-| | First run (RRF retrieval, strict citation parser) | Current |
-|---|---|---|
-| Answer accuracy | 0.868 | **0.921** |
-| False abstentions | 3 / 38 | **0 / 38** |
-| Citation support | 0.14 | **0.974** |
-| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s |
+| | First run (RRF retrieval, strict citation parser) | 2026-10-29 (weighted retrieval) | 2026-10-31 (hyphen-aware grader, citation prompt) |
+|---|---|---|---|
+| Answer accuracy | 0.868 | 0.921 | **1.00** |
+| False abstentions | 3 / 38 | 0 / 38 | **0 / 38** |
+| Answers with a citation | – | 37 / 38 | **38 / 38** |
+| Citation support | 0.14 | 0.974 | **1.00** |
+| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s | 5.4 s / 6.6 s |
 
 - **Citation support 0.14 → 0.97 was a measurement bug, not better answers.** The first parser only recognised the exact `[Source N]` form, but gpt-oss often writes `【Source 1】`, `[Source 1, 3]` or `【1†source】`. Answers were already judged fully faithful; once the parser accepted these formats, the citations were found.
-- **Accuracy and false abstentions improved with the switch to weighted retrieval**, which puts the right passage in front of the LLM more often. LLM output also varies a little between runs (temperature 0.2), so small differences shouldn't be over-read.
-- **The 3 "wrong answers" left in that run were grading errors.** The model wrote non-breaking hyphens (`WT‑3`, `IR‑2`, `single‑use` with U+2011), which the key-fact matcher didn't treat as `-`. With the matcher fixed, the same answers score 38 / 38. The one uncited answer (#41) was correct too; the prompt now asks for a citation after every sentence. The next CI run re-measures both.
+- **Accuracy and false abstentions improved with the switch to weighted retrieval**, which puts the right passage in front of the LLM more often. LLM output also varies a little between runs (temperature 0.2), so small differences shouldn't be over-read. Latency depends on Groq's load at the time: p50 was 3.7 s in one run and 5.4 s in the next with the same setup.
+- **The 3 "wrong answers" in the 2026-10-29 run were grading errors.** The model wrote non-breaking hyphens (`WT‑3`, `IR‑2`, `single‑use` with U+2011), which the key-fact matcher didn't treat as `-`. After the matcher was fixed, the next CI run (2026-10-31) scored 38 / 38. The one uncited answer (#41) was correct too; the prompt now asks for a citation after every sentence, and in that run every answer had one.
 - The CI summary lists the remaining misses and uncited answers for each run.
 
 ## 🚀 Getting Started
