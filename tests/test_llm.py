@@ -96,3 +96,26 @@ def test_gpt_oss_uses_low_reasoning_effort():
     text, usage = llm.complete(client, [{"role": "user", "content": "hi"}])
     assert text == "ok" and usage.total_tokens == 42
     assert client.calls[0]["reasoning_effort"] == "low"
+
+
+# A review showed answers near the end of a correctly retrieved passage were cut
+# off: only the first 1,200 characters of each ~3,000-character chunk were sent.
+FILLER = " ".join(f"Section {i} describes routine office procedures and general guidance for staff." for i in range(22))
+
+
+def test_excerpt_keeps_short_passages_whole():
+    assert llm.excerpt("A short passage.", "anything") == "A short passage."
+
+
+def test_excerpt_finds_an_answer_near_the_end_of_a_long_passage():
+    passage = FILLER + " The launch password is ORCHID."
+    assert len(passage) > llm.EXCERPT_CHARS
+    piece = llm.excerpt(passage, "What is the launch password?")
+    assert "ORCHID" in piece and len(piece) <= llm.EXCERPT_CHARS + 4 and piece.startswith("…")
+    messages = llm.build_messages("What is the launch password?", [make_chunk(passage)])
+    assert "ORCHID" in messages[-1]["content"]
+
+
+def test_excerpt_without_matching_words_keeps_the_beginning():
+    passage = FILLER + " The launch password is ORCHID."
+    assert llm.excerpt(passage, "zzz qqq").startswith("Section 0")

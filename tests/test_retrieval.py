@@ -98,3 +98,17 @@ def test_empty_and_unreadable_chunks_are_dropped():
 def test_keywords_are_distinctive_terms(index):
     assert "sediment" in index.chunks[0]["keywords"]
     assert "the" not in index.chunks[0]["keywords"]
+
+
+# BM25's idf is zero or negative in one- or two-chunk documents, and a
+# "score > 0" filter used to make keyword search return nothing.
+@pytest.mark.parametrize("extra_chunks", [0, 1])
+def test_keyword_search_works_on_tiny_documents(extra_chunks):
+    from retrieval import bm25_ranking, build_index
+    from tests.conftest import make_chunk
+
+    chunks = [make_chunk("The launch password is ORCHID for the spring release.")]
+    chunks += [make_chunk("Budget meeting notes for the finance team this week.", page=1)] * extra_chunks
+    index = build_index(chunks, f"tiny-{extra_chunks}", InMemoryStore(), HashingEmbedder())
+    assert [i for i, _ in bm25_ranking(index, "launch password")] == [0]
+    assert bm25_ranking(index, "zebra unicorn") == []

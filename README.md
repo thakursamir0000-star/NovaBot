@@ -33,7 +33,7 @@
 - **💬 Follow-up questions** — "explain that more" is rewritten into a standalone query from the chat history before searching
 - **📑 Checked citations** — every answer cites `[Source N]`; citations to passages that weren't retrieved are flagged, and uncited answers are marked
 - **🙅 Honest abstention** — when the passages don't contain the answer, the bot says *"I couldn't find this in the book."*
-- **🔒 Private per visitor** — each browser session gets its own ChromaDB collection, and collections are deleted after 24 hours
+- **🔒 Private per visitor** — each browser session gets its own ChromaDB collection; collections older than 24 hours are deleted by a clean-up that runs at server start and then at most hourly while the app is in use
 - **🛟 Model failover** — if a Groq model is down or retired, the next one answers
 - **⏱ Transparent timing** — every answer shows search time, answer time and the rewritten query
 

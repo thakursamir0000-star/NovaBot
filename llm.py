@@ -130,11 +130,49 @@ def condense_question(client, question, chat_history):
     return text if 3 <= len(text) <= 400 else question
 
 
+_WORD = re.compile(r"[a-z0-9]+")
+_COMMON_WORDS = frozenset(
+    "the and are was were for with what which who how when where does did this that from into "
+    "about there their they them his her its has have had can could should would will not".split())
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
+
+
+def _content_words(text):
+    return {w for w in _WORD.findall(text.lower()) if len(w) > 2 and w not in _COMMON_WORDS}
+
+
+def excerpt(text, question, limit=EXCERPT_CHARS):
+    """The part of a retrieved passage the model sees.
+
+    The whole passage when it fits in `limit` characters; otherwise the window of
+    whole sentences that shares the most words with the question. Sending the
+    first `limit` characters dropped answers near the end of long passages
+    (chunks are ~500 words, about 3,000 characters).
+    """
+    if len(text) <= limit:
+        return text
+    wanted = _content_words(question)
+    sentences = _SENTENCE_END.split(text)
+    best_start, best_count, best_score = 0, 1, -1
+    for start in range(len(sentences)):
+        count, size = 0, 0
+        while start + count < len(sentences) and (count == 0 or size + len(sentences[start + count]) + 1 <= limit):
+            size += len(sentences[start + count]) + 1
+            count += 1
+        score = len(wanted & _content_words(" ".join(sentences[start:start + count])))
+        if score > best_score:  # ties keep the earliest window
+            best_start, best_count, best_score = start, count, score
+    piece = " ".join(sentences[best_start:best_start + best_count])[:limit]
+    before = "… " if best_start > 0 else ""
+    after = " …" if best_start + best_count < len(sentences) else ""
+    return before + piece + after
+
+
 def build_messages(question, chunks, chat_history=None, book_title=None):
     """System prompt + recent history + the question with numbered context passages."""
     book = f'"{book_title}"' if book_title else "the uploaded book"
     context = "\n\n---\n\n".join(
-        f"[Source {i} | Pages {c['start_page'] + 1}–{c['end_page'] + 1} | {c['heading']}]\n{c['text'][:EXCERPT_CHARS]}"
+        f"[Source {i} | Pages {c['start_page'] + 1}–{c['end_page'] + 1} | {c['heading']}]\n{excerpt(c['text'], question)}"
         for i, c in enumerate(chunks, 1)
     )
     messages = [{"role": "system", "content": SYSTEM_PROMPT.format(book=book, not_found=NOT_FOUND)}]

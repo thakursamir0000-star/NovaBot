@@ -203,14 +203,37 @@ if "session_id" not in st.session_state:
     st.session_state.session_id = uuid.uuid4().hex
 
 
-@st.cache_resource
+@st.cache_resource(ttl=3600)
 def _cleanup_once():
-    """Remove other sessions' expired vectors once per server process."""
+    """Remove other sessions' expired vectors. Cached for an hour, so it runs again
+    at most hourly while the app is in use (it used to run once per server process)."""
     try:
         return cleanup_stale_sessions()
     except Exception as e:
         logging.getLogger(__name__).warning("Session cleanup skipped: %s", e)
         return 0
+
+
+def source_summary(chunk):
+    """What the source panel shows, small enough to keep with each answer."""
+    return {"heading": chunk["heading"], "start_page": chunk["start_page"], "end_page": chunk["end_page"],
+            "keywords": list(chunk.get("keywords") or []), "preview": chunk["text"][:400]}
+
+
+def render_sources(sources):
+    with st.expander("📚 View source passages"):
+        for i, c in enumerate(sources, 1):
+            keywords = html.escape(", ".join(c["keywords"])) or "—"
+            st.markdown(f"""
+            <div class="source-card">
+                <div class="source-header">
+                    <span class="source-badge">SOURCE {i}</span>
+                    <span class="source-heading">{html.escape(c['heading'])}</span>
+                </div>
+                <div class="source-meta">📄 Pages {c['start_page']+1}–{c['end_page']+1} &nbsp;•&nbsp; 🏷️ {keywords}</div>
+                <div class="source-preview">{html.escape(c['preview'])}...</div>
+            </div>
+            """, unsafe_allow_html=True)
 
 
 def load_book(pdf_bytes, chunk_size, chunk_overlap, force=False):
@@ -299,6 +322,8 @@ if uploaded_file:
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            if msg.get("sources"):  # earlier answers keep their source panels
+                render_sources(msg["sources"])
 
     query = st.chat_input("Ask a question about the book...")
 
@@ -338,21 +363,10 @@ if uploaded_file:
                 timing += f" · searched for: “{search_query}”"
             st.caption(timing)
 
-            with st.expander("📚 View source passages"):
-                for i, c in enumerate(chunks, 1):
-                    keywords = html.escape(", ".join(c.get("keywords") or [])) or "—"
-                    st.markdown(f"""
-                    <div class="source-card">
-                        <div class="source-header">
-                            <span class="source-badge">SOURCE {i}</span>
-                            <span class="source-heading">{html.escape(c['heading'])}</span>
-                        </div>
-                        <div class="source-meta">📄 Pages {c['start_page']+1}–{c['end_page']+1} &nbsp;•&nbsp; 🏷️ {keywords}</div>
-                        <div class="source-preview">{html.escape(c['text'][:400])}...</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+            sources = [source_summary(c) for c in chunks]
+            render_sources(sources)
 
-        st.session_state.messages.append({"role": "assistant", "content": response_text})
+        st.session_state.messages.append({"role": "assistant", "content": response_text, "sources": sources})
 else:
     st.markdown("""
     <div class="empty-state">
