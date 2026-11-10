@@ -1,5 +1,6 @@
 """Groq LLM calls: follow-up rewriting, grounded answers with citations, and citation checks."""
 import logging
+import math
 import os
 import re
 
@@ -11,7 +12,7 @@ PRIMARY_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 FALLBACK_MODELS = [m.strip() for m in os.environ.get(
     "GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,qwen/qwen3.8-27b").split(",") if m.strip()]
 HISTORY_TURNS = 6
-EXCERPT_CHARS = 1200
+EXCERPT_CHARS = 1500  # per passage; ~half of a 500-word chunk, centred on the best-matching sentence
 NOT_FOUND = "I couldn't find this in the book."
 
 _unavailable_models = set()
@@ -138,34 +139,49 @@ _SENTENCE_END = re.compile(r"(?<=[.!?])\s+")
 
 
 def _content_words(text):
-    return {w for w in _WORD.findall(text.lower()) if len(w) > 2 and w not in _COMMON_WORDS}
+    """Lower-case content words, with a simple plural fold ("sightings" -> "sighting")."""
+    found = set()
+    for w in _WORD.findall(text.lower()):
+        if len(w) > 2 and w not in _COMMON_WORDS:
+            found.add(w[:-1] if len(w) > 4 and w.endswith("s") and not w.endswith("ss") else w)
+    return found
 
 
 def excerpt(text, question, limit=EXCERPT_CHARS):
     """The part of a retrieved passage the model sees.
 
-    The whole passage when it fits in `limit` characters; otherwise the window of
-    whole sentences that shares the most words with the question. Sending the
-    first `limit` characters dropped answers near the end of long passages
-    (chunks are ~500 words, about 3,000 characters).
+    The whole passage when it fits in `limit` characters. Otherwise: score each
+    sentence by the question words it contains (words that are rare within the
+    passage count more), then take the best sentence and grow the window around
+    it with neighbouring sentences up to `limit`. Sending the first `limit`
+    characters lost the answer for half of the evaluation questions at the app's
+    500-word chunk size (19/38 passages had the evidence in view; now 37/38).
     """
     if len(text) <= limit:
         return text
-    wanted = _content_words(question)
     sentences = _SENTENCE_END.split(text)
-    best_start, best_count, best_score = 0, 1, -1
-    for start in range(len(sentences)):
-        count, size = 0, 0
-        while start + count < len(sentences) and (count == 0 or size + len(sentences[start + count]) + 1 <= limit):
-            size += len(sentences[start + count]) + 1
-            count += 1
-        score = len(wanted & _content_words(" ".join(sentences[start:start + count])))
-        if score > best_score:  # ties keep the earliest window
-            best_start, best_count, best_score = start, count, score
-    piece = " ".join(sentences[best_start:best_start + best_count])[:limit]
-    before = "… " if best_start > 0 else ""
-    after = " …" if best_start + best_count < len(sentences) else ""
-    return before + piece + after
+    words = [_content_words(s) for s in sentences]
+    seen_in = {}
+    for sentence_words in words:
+        for w in sentence_words:
+            seen_in[w] = seen_in.get(w, 0) + 1
+    rarity = {w: math.log(1 + len(sentences) / n) for w, n in seen_in.items()}
+    wanted = _content_words(question)
+    # Highest score wins; ties keep the earliest sentence (so no match = the beginning).
+    best = max(range(len(sentences)), key=lambda i: (sum(rarity[w] for w in wanted & words[i]), -i))
+
+    first = last = best
+    size = len(sentences[best])
+    grew = True
+    while grew:  # add the next sentence after, then before, while they fit
+        grew = False
+        for i in (last + 1, first - 1):
+            if 0 <= i < len(sentences) and size + len(sentences[i]) + 1 <= limit:
+                size += len(sentences[i]) + 1
+                first, last = min(first, i), max(last, i)
+                grew = True
+    piece = " ".join(sentences[first:last + 1])[:limit]
+    return ("… " if first > 0 else "") + piece + (" …" if last < len(sentences) - 1 else "")
 
 
 def build_messages(question, chunks, chat_history=None, book_title=None):

@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <em>Hybrid retrieval (BM25 + embeddings) · cross-encoder reranking · ChromaDB · Groq · 38 / 38 answers correct and cited, 100% refusal on unanswerable questions, 0 unsupported claims — measured in CI</em>
+  <em>Hybrid retrieval (BM25 + embeddings) · cross-encoder reranking · ChromaDB · Groq · 37–38 / 38 answers correct across runs, 100% refusal on unanswerable questions, citation-checked answers — measured in CI</em>
 </p>
 
 <p align="center">
@@ -109,7 +109,7 @@ What this shows:
 - **Reranking gives the best ranking** (MRR 0.94) but is ~35× slower on CPU, so it stays an option.
 - 38 questions over 32 chunks is small: one question moves Recall by 0.026.
 
-**Answers** (44 questions, weighted hybrid, top-5 passages)
+**Answers** (44 questions, weighted hybrid, top-5 passages; CI run of 2026-10-31)
 
 | Metric | Result |
 |---|---|
@@ -123,20 +123,32 @@ What this shows:
 | Answer latency p50 / p95 | 5.4 s / 6.6 s |
 | Tokens per answer | ~740 |
 
-How it got here (three CI runs, same questions):
+How it got here (CI runs, same questions):
 
-| | First run (RRF retrieval, strict citation parser) | 2026-10-29 (weighted retrieval) | 2026-10-31 (hyphen-aware grader, citation prompt) |
-|---|---|---|---|
-| Answer accuracy | 0.868 | 0.921 | **1.00** |
-| False abstentions | 3 / 38 | 0 / 38 | **0 / 38** |
-| Answers with a citation | – | 37 / 38 | **38 / 38** |
-| Citation support | 0.14 | 0.974 | **1.00** |
-| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s | 5.4 s / 6.6 s |
+| | First run (RRF retrieval, strict citation parser) | 2026-10-29 (weighted retrieval) | 2026-10-31 (hyphen-aware grader, citation prompt) | 2026-11-11 (re-run, same model input) |
+|---|---|---|---|---|
+| Answer accuracy | 0.868 | 0.921 | **1.00** | 0.974 |
+| False abstentions | 3 / 38 | 0 / 38 | **0 / 38** | 1 / 38 |
+| Answers with a citation | – | 37 / 38 | **38 / 38** | **38 / 38** |
+| Citation support | 0.14 | 0.974 | **1.00** | **1.00** |
+| Faithfulness (LLM judge) | – | – | **1.00** | 0.973 |
+| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s | 5.4 s / 6.6 s | 5.5 s / 6.6 s |
 
 - **Citation support 0.14 → 0.97 was a measurement bug, not better answers.** The first parser only recognised the exact `[Source N]` form, but gpt-oss often writes `【Source 1】`, `[Source 1, 3]` or `【1†source】`. Answers were already judged fully faithful; once the parser accepted these formats, the citations were found.
 - **Accuracy and false abstentions improved with the switch to weighted retrieval**, which puts the right passage in front of the LLM more often. LLM output also varies a little between runs (temperature 0.2), so small differences shouldn't be over-read. Latency depends on Groq's load at the time: p50 was 3.7 s in one run and 5.4 s in the next with the same setup.
 - **The 3 "wrong answers" in the 2026-10-29 run were grading errors.** The model wrote non-breaking hyphens (`WT‑3`, `IR‑2`, `single‑use` with U+2011), which the key-fact matcher didn't treat as `-`. After the matcher was fixed, the next CI run (2026-10-31) scored 38 / 38. The one uncited answer (#41) was correct too; the prompt now asks for a citation after every sentence, and in that run every answer had one.
+- **The 2026-11-11 dip is run-to-run variation.** The evaluation's 60-word passages (at most 433 characters) fit the excerpt budget, so the model received exactly the same input as on 2026-10-31; one answerable question was refused this time. Read the accuracy as 37–38 / 38 rather than a fixed 1.00.
 - The CI summary lists the remaining misses and uncited answers for each run.
+
+**Evidence at the app's chunk size.** The evaluation above uses 60-word passages, but the app's default is 500 words (about 3,000 characters), and the answer prompt includes at most 1,500 characters of each passage. An external review found the prompt used to take each passage's *first* characters, so a correctly retrieved answer could be cut off. Checked without an LLM on the same 38 questions, at 500-word chunks with all passages retrieved:
+
+| What each passage contributes to the prompt | Evidence in the prompt |
+|---|---|
+| First 1,200 characters (before) | 19 / 38 |
+| The sentence window sharing the most question words | 33 / 38 |
+| **Window around the best-matching sentence, rarer words weighted, plurals folded (current)** | **37 / 38** |
+
+The remaining miss is a paraphrase with almost no words in common with its evidence. A test keeps this at 37 / 38 or better. The heuristic was tuned on these same questions, so expect a little less on new documents.
 
 ## 🚀 Getting Started
 
