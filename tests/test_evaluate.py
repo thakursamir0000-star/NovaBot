@@ -108,3 +108,25 @@ def test_issues_list_flags_each_problem():
     ]
     labels = [line.split("**")[1] for line in answer_issues(cases)]
     assert labels == ["wrong answer", "false abstention", "no citation detected", "did not abstain"]
+
+
+def test_evidence_reaches_the_model_at_the_apps_chunk_size():
+    # The CI answer evaluation uses 60-word chunks, which always fit the excerpt
+    # budget. At the app's 500-word chunks, sending each passage's first 1,200
+    # characters hid the evidence for 19 of 38 questions; the best-sentence
+    # excerpt keeps it in view for 37.
+    from evaluation.evaluate import load_pages, load_questions, normalize
+    from ingest import chunk_with_overlap
+    from llm import excerpt
+    from retrieval import build_index, retrieve
+    from vector_store import InMemoryStore
+
+    questions = [q for q in load_questions(DEFAULT_QUESTIONS) if q.get("evidence")]
+    chunks = chunk_with_overlap(load_pages(DEFAULT_DOC), chunk_size=500, overlap=100)
+    index = build_index(chunks, "coverage", InMemoryStore(), embedder=HashingEmbedder())
+    in_view = sum(
+        any(normalize(q["evidence"]) in normalize(excerpt(c["text"], q["question"]))
+            for c in retrieve(index, q["question"], top_k=5, method="weighted"))
+        for q in questions
+    )
+    assert in_view >= 37
