@@ -6,8 +6,10 @@ import re
 logger = logging.getLogger(__name__)
 
 PRIMARY_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+# Groq retired the Llama 3 models this list used to end with; qwen is a different
+# model family with its own daily quota, so it still answers when both gpt-oss are capped.
 FALLBACK_MODELS = [m.strip() for m in os.environ.get(
-    "GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,llama-3.3-70b-versatile,llama-3.1-8b-instant").split(",") if m.strip()]
+    "GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,qwen/qwen3.8-27b").split(",") if m.strip()]
 HISTORY_TURNS = 6
 EXCERPT_CHARS = 1200
 NOT_FOUND = "I couldn't find this in the book."

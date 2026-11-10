@@ -171,7 +171,7 @@ Open http://localhost:8501, upload a PDF, and ask away. A local `./chroma_db/` f
 | Cross-encoder reranking | Off | More precise, slower |
 | Page-range scope | Off | Search only selected pages |
 
-Environment variables: `GROQ_MODEL` (default `openai/gpt-oss-120b`), `GROQ_FALLBACK_MODELS` (comma-separated), `EMBEDDING_MODEL` (default `all-MiniLM-L6-v2`).
+Environment variables: `GROQ_MODEL` (default `openai/gpt-oss-120b`), `GROQ_FALLBACK_MODELS` (comma-separated, default `openai/gpt-oss-20b,qwen/qwen3.8-27b`), `EMBEDDING_MODEL` (default `all-MiniLM-L6-v2`).
 
 ## 🧪 Testing
 
