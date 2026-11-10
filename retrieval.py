@@ -11,7 +11,7 @@ because it scored best there (MRR 0.910 vs 0.866 for RRF).
 """
 import re
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from rank_bm25 import BM25Okapi
 
@@ -55,6 +55,7 @@ class Index:
     bm25: object
     store: object
     embedder: object = None
+    token_sets: list = field(default_factory=list)  # each chunk's words, for keyword matching
 
 
 def build_index(chunks, doc_id, store, embedder=None, force=False):
@@ -82,7 +83,8 @@ def build_index(chunks, doc_id, store, embedder=None, force=False):
             store.delete(doc_id)
         if not store.has(doc_id):
             store.add(doc_id, clean, embed([c["text"] for c in clean], embedder))
-    return Index(doc_id=doc_id, chunks=clean, bm25=bm25, store=store, embedder=embedder)
+    return Index(doc_id=doc_id, chunks=clean, bm25=bm25, store=store, embedder=embedder,
+                 token_sets=[set(t) for t in tokenized])
 
 
 def _in_scope(chunk, page_start, page_end):
@@ -96,8 +98,13 @@ def bm25_ranking(index, query, page_start=None, page_end=None):
     if index.bm25 is None or not tokens:
         return []
     scores = index.bm25.get_scores(tokens)
+    # Keep every chunk that shares a query word. In a one- or two-chunk document
+    # BM25's idf makes those scores zero or negative, and a "score > 0" test
+    # used to drop the only matching passage.
+    query_words = set(tokens)
     ranked = [(i, float(s)) for i, s in enumerate(scores)
-              if s > 0 and _in_scope(index.chunks[i], page_start, page_end)]
+              if (query_words & index.token_sets[i] if index.token_sets else s > 0)
+              and _in_scope(index.chunks[i], page_start, page_end)]
     return sorted(ranked, key=lambda pair: -pair[1])
 
 
