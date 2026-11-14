@@ -193,7 +193,7 @@ ruff check .
 pytest
 ```
 
-The 50 tests run without network access or an API key: a fake Groq client, a hashing stand-in for the embedding model, and real ChromaDB in a temporary folder. They cover chunking, tokenization, every retrieval method and both fusions, reranker input, index reuse, per-session isolation and expiry, citation and abstention checks, model failover (including failures mid-stream), the evaluation metrics, and a Streamlit smoke test that clicks **Re-index**.
+The 60 tests run without network access or an API key: a fake Groq client, a hashing stand-in for the embedding model, and real ChromaDB in a temporary folder. They cover chunking, tokenization, every retrieval method and both fusions, keyword search on one- and two-passage documents, reranker input, index reuse, per-session isolation and expiry, which part of a long passage reaches the prompt (including the 37 / 38 evidence check at the app's chunk size), citation and abstention checks, model failover (including failures mid-stream), the evaluation metrics, and a Streamlit smoke test that clicks **Re-index**.
 
 ## 🧠 Design notes
 
