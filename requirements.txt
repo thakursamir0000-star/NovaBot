@@ -1,5 +1,6 @@
 streamlit>=1.40,<2
 groq>=1.0,<2
+openai>=1.40,<4
 pypdf>=4.0,<7
 rank-bm25>=0.2.2,<0.3
 sentence-transformers>=3.0,<6

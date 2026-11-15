@@ -98,6 +98,59 @@ def test_gpt_oss_uses_low_reasoning_effort():
     assert client.calls[0]["reasoning_effort"] == "low"
 
 
+@pytest.fixture
+def no_llm_env(monkeypatch):
+    for var in ("LLM_PROVIDER", "GROQ_API_KEY", "OPENROUTER_API_KEY"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setattr(llm, "_setting", lambda name: llm.os.environ.get(name, ""))  # no Streamlit secrets
+    return monkeypatch
+
+
+def test_provider_follows_the_configured_key(no_llm_env):
+    assert llm.provider_name() == "groq"
+    assert llm.get_client() is None
+    no_llm_env.setenv("OPENROUTER_API_KEY", "sk-or-test")
+    assert llm.provider_name() == "openrouter"
+    client = llm.get_client()
+    assert llm.is_openrouter(client) and client.timeout == 60
+    no_llm_env.setenv("GROQ_API_KEY", "gsk-test")
+    assert llm.provider_name() == "groq"  # both keys: Groq unless LLM_PROVIDER says otherwise
+    no_llm_env.setenv("LLM_PROVIDER", "openrouter")
+    assert llm.provider_name() == "openrouter"
+    no_llm_env.setenv("LLM_PROVIDER", "nope")
+    with pytest.raises(ValueError, match="LLM_PROVIDER"):
+        llm.provider_name()
+
+
+def openrouter_fake(responder):
+    client = FakeClient(responder)
+    client.base_url = "https://openrouter.ai/api/v1/"
+    return client
+
+
+def test_openrouter_requests_carry_routing_and_reasoning_in_the_body():
+    client = openrouter_fake(lambda kwargs: FakeStream(["Hi ", "there"]))
+    assert "".join(llm.stream_answer(client, [])) == "Hi there"
+    body = client.calls[0]["extra_body"]
+    assert "reasoning_effort" not in client.calls[0]
+    assert body == {"provider": {"data_collection": "deny", "ignore": ["google-vertex"]},
+                    "reasoning": {"effort": "low"}}
+
+
+def test_openrouter_unknown_model_is_skipped():
+    class InvalidModel(Exception):
+        status_code = 400
+
+    def responder(kwargs):
+        if kwargs["model"] == llm.PRIMARY_MODEL:
+            return InvalidModel(f"Error code: 400 - {llm.PRIMARY_MODEL} is not a valid model ID")
+        return "ok"
+
+    client = openrouter_fake(responder)
+    assert llm.complete(client, [{"role": "user", "content": "hi"}])[0] == "ok"
+    assert llm.PRIMARY_MODEL not in llm.candidate_models()
+
+
 # A review showed answers near the end of a correctly retrieved passage were cut
 # off: only the first 1,200 characters of each ~3,000-character chunk were sent.
 FILLER = " ".join(f"Section {i} describes routine office procedures and general guidance for staff." for i in range(22))

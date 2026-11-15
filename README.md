@@ -34,7 +34,7 @@
 - **📑 Checked citations** — every answer cites `[Source N]`; citations to passages that weren't retrieved are flagged, and uncited answers are marked
 - **🙅 Honest abstention** — when the passages don't contain the answer, the bot says *"I couldn't find this in the book."*
 - **🔒 Private per visitor** — each browser session gets its own ChromaDB collection; collections older than 24 hours are deleted by a clean-up that runs at server start and then at most hourly while the app is in use
-- **🛟 Model failover** — if a Groq model is down or retired, the next one answers
+- **🛟 Model failover** — if a model is down or retired, the next one answers (Groq or OpenRouter)
 - **⏱ Transparent timing** — every answer shows search time, answer time and the rewritten query
 
 ## 🏗️ Architecture
@@ -49,7 +49,7 @@ flowchart LR
     B --> F[Weighted fusion]
     V --> F
     F --> R[Cross-encoder rerank<br/>optional]
-    R --> G[llm.py<br/>grounded answer + citations<br/>Groq with failover]
+    R --> G[llm.py<br/>grounded answer + citations<br/>Groq or OpenRouter, with failover]
     G --> K[citation check] --> A[Answer + sources + timing]
 ```
 
@@ -59,7 +59,7 @@ flowchart LR
 | `embeddings.py` | One shared sentence-embedding model, normalized vectors |
 | `vector_store.py` | `ChromaStore` (per-session collections, top-n HNSW queries, page filters, expiry) and `InMemoryStore` |
 | `retrieval.py` | Tokenizer, BM25, semantic search, weighted / RRF fusion, reranking, page scope |
-| `llm.py` | Groq calls with failover, follow-up rewriting, prompt with numbered sources, citation and abstention checks |
+| `llm.py` | Groq / OpenRouter calls with failover, follow-up rewriting, prompt with numbered sources, citation and abstention checks |
 | `app.py` | Streamlit UI |
 | `evaluation/` | Test document, 44 questions with known answers, evaluation script |
 
@@ -81,11 +81,11 @@ Each answerable question has an evidence phrase (which passages count as relevan
 
 ```bash
 python evaluation/evaluate.py              # layers 1 + 3 (downloads the embedding and reranker models)
-python evaluation/evaluate.py --with-llm   # + layer 2, needs GROQ_API_KEY
+python evaluation/evaluate.py --with-llm   # + layer 2, needs GROQ_API_KEY or OPENROUTER_API_KEY
 python evaluation/evaluate.py --doc my_book.pdf --questions my_questions.jsonl
 ```
 
-CI runs the retrieval evaluation with the real models on every push and posts the table in the run summary. The answer evaluation makes ~80 Groq calls per run, so it doesn't spend quota on every push: start it from **Actions → CI → Run workflow** (pick the answering model there), or let the weekly scheduled run do it; both need a `GROQ_API_KEY` repository secret.
+CI runs the retrieval evaluation with the real models on every push and posts the table in the run summary. The answer evaluation makes ~80 Groq calls per run, so it doesn't spend quota on every push: start it from **Actions → CI → Run workflow** (pick the answering model there), or let the weekly scheduled run do it; both need a `GROQ_API_KEY` or `OPENROUTER_API_KEY` repository secret (Groq is used when both are set).
 
 ### Results
 
@@ -160,11 +160,15 @@ venv\Scripts\activate            # Windows  (source venv/bin/activate on Linux/M
 pip install -r requirements.txt
 ```
 
-Create a `.env` file:
+Create a `.env` file with one of the two keys:
 
 ```env
-GROQ_API_KEY=your_groq_api_key_here
+GROQ_API_KEY=your_groq_api_key_here        # free tier, daily token caps
+OPENROUTER_API_KEY=your_openrouter_key     # paid, no daily cap
+# LLM_PROVIDER=openrouter                  # only needed when both keys are set (default: Groq)
 ```
+
+On OpenRouter the same model names are used. Requests only go to hosts that don't store or train on prompts (`data_collection: "deny"`), and Google Vertex is skipped because it returned broken output for `gpt-oss-120b` when tested on 15 Nov 2026. For a public deployment, use a separate OpenRouter key with a credit limit, because every visitor's question is paid from it.
 
 ```bash
 streamlit run app.py
@@ -183,7 +187,7 @@ Open http://localhost:8501, upload a PDF, and ask away. A local `./chroma_db/` f
 | Cross-encoder reranking | Off | More precise, slower |
 | Page-range scope | Off | Search only selected pages |
 
-Environment variables: `GROQ_MODEL` (default `openai/gpt-oss-120b`), `GROQ_FALLBACK_MODELS` (comma-separated, default `openai/gpt-oss-20b,qwen/qwen3.8-27b`), `EMBEDDING_MODEL` (default `all-MiniLM-L6-v2`).
+Environment variables: `LLM_PROVIDER` (`groq` or `openrouter`), `GROQ_MODEL` (default `openai/gpt-oss-120b`), `GROQ_FALLBACK_MODELS` (comma-separated, default `openai/gpt-oss-20b,qwen/qwen3.8-27b`; both model settings apply on OpenRouter too), `EMBEDDING_MODEL` (default `all-MiniLM-L6-v2`).
 
 ## 🧪 Testing
 
@@ -193,7 +197,7 @@ ruff check .
 pytest
 ```
 
-The 60 tests run without network access or an API key: a fake Groq client, a hashing stand-in for the embedding model, and real ChromaDB in a temporary folder. They cover chunking, tokenization, every retrieval method and both fusions, keyword search on one- and two-passage documents, reranker input, index reuse, per-session isolation and expiry, which part of a long passage reaches the prompt (including the 37 / 38 evidence check at the app's chunk size), citation and abstention checks, model failover (including failures mid-stream), the evaluation metrics, and a Streamlit smoke test that clicks **Re-index**.
+The 63 tests run without network access or an API key: a fake LLM client, a hashing stand-in for the embedding model, and real ChromaDB in a temporary folder. They cover chunking, tokenization, every retrieval method and both fusions, keyword search on one- and two-passage documents, reranker input, index reuse, per-session isolation and expiry, which part of a long passage reaches the prompt (including the 37 / 38 evidence check at the app's chunk size), citation and abstention checks, model failover (including failures mid-stream), provider choice and OpenRouter request settings, the evaluation metrics, and a Streamlit smoke test that clicks **Re-index**.
 
 ## 🧠 Design notes
 

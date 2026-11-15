@@ -169,17 +169,22 @@ with st.sidebar:
                  help="Rebuilds this book's vectors from scratch"):
         st.session_state.force_reindex = True
 
+    try:
+        provider_label = {"groq": "Groq", "openrouter": "OpenRouter"}[llm.provider_name()]
+    except ValueError:
+        provider_label = "unknown LLM_PROVIDER"
     st.markdown('<div class="sidebar-section-title">🧠 Model Info</div>', unsafe_allow_html=True)
     st.markdown(f"""
     <div class="sidebar-info-card"><div class="label">LLM</div><div class="value">{html.escape(llm.PRIMARY_MODEL)} (+ fallbacks)</div></div>
-    <div class="sidebar-info-card"><div class="label">Provider</div><div class="value">Groq (Ultra-Fast)</div></div>
+    <div class="sidebar-info-card"><div class="label">Provider</div><div class="value">{html.escape(provider_label)}</div></div>
     <div class="sidebar-info-card"><div class="label">Retrieval</div><div class="value">{METHOD_LABELS[method]}</div></div>
     <div class="sidebar-info-card"><div class="label">Vector Store</div><div class="value">ChromaDB (one collection per session)</div></div>
     <div class="sidebar-info-card"><div class="label">Embeddings</div><div class="value">MiniLM-L6-v2</div></div>
     <div class="sidebar-info-card"><div class="label">Reranker</div><div class="value">MS-MARCO MiniLM (optional)</div></div>
     """, unsafe_allow_html=True)
 
-    st.markdown('<div class="powered-footer">Built with Streamlit • Powered by GROQ</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="powered-footer">Built with Streamlit • Powered by {html.escape(provider_label)}</div>',
+                unsafe_allow_html=True)
 
 # ── Hero ─────────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -272,7 +277,7 @@ _cleanup_once()
 if uploaded_file:
     client = llm.get_client()
     if client is None:
-        st.error("⚠️ GROQ_API_KEY not set. Add it to a .env file or to Settings → Secrets.")
+        st.error("⚠️ No LLM API key set. Add GROQ_API_KEY or OPENROUTER_API_KEY to a .env file or to Settings → Secrets.")
         st.stop()
 
     book = load_book(uploaded_file.getvalue(), chunk_size, chunk_overlap,
