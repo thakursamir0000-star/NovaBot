@@ -346,10 +346,16 @@ if uploaded_file:
                     index, search_query, top_k=top_k, method=method, use_reranker=use_reranker,
                     page_start=page_start, page_end=page_end,
                 )
+                # Enforce the selected original pages again before context,
+                # citations and displayed source metadata are constructed.
+                chunks = llm.restrict_chunks_to_pages(chunks, page_start, page_end)
             t_retrieved = time.perf_counter()
 
             if chunks:
-                messages = llm.build_messages(query, chunks, history, book["title"])
+                messages = llm.build_messages(
+                    query, chunks, history, book["title"],
+                    page_start=page_start, page_end=page_end,
+                )
                 response_text = st.write_stream(llm.stream_answer(client, messages))
             else:
                 response_text = llm.NOT_FOUND

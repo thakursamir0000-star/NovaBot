@@ -46,6 +46,43 @@ def test_build_messages_numbers_sources_and_explains_abstention():
     assert "[Source 2 | Pages 5–5 | Chapter 2: B]" in messages[-1]["content"]
 
 
+def test_page_scoped_context_excludes_other_pages_and_keeps_original_citation():
+    chunks = [
+        make_chunk("Page one public orientation material.", 0),
+        make_chunk("The launch password is ORCHID.", 1, heading="Chapter 2: Launch"),
+    ]
+
+    page_one_prompt = llm.build_messages(
+        "What is the launch password?", chunks, page_start=0, page_end=0,
+    )[-1]["content"]
+    assert "orientation material" in page_one_prompt
+    assert "ORCHID" not in page_one_prompt
+    assert "[Source 1 | Pages 1–1 | Chapter 1: Test]" in page_one_prompt
+    assert "Pages 2–2" not in page_one_prompt
+
+    page_two_prompt = llm.build_messages(
+        "What is the launch password?", chunks, page_start=1, page_end=1,
+    )[-1]["content"]
+    assert "ORCHID" in page_two_prompt
+    assert "orientation material" not in page_two_prompt
+    assert "[Source 1 | Pages 2–2 | Chapter 2: Launch]" in page_two_prompt
+    assert "Pages 1–1" not in page_two_prompt
+
+
+def test_final_context_rejects_a_legacy_passage_that_spans_excluded_pages():
+    legacy_chunk = {
+        "heading": "Legacy passage",
+        "text": "Page one text. The page two secret is ORCHID.",
+        "start_page": 0,
+        "end_page": 1,
+    }
+    prompt = llm.build_messages(
+        "What is the secret?", [legacy_chunk], page_start=0, page_end=0,
+    )[-1]["content"]
+    assert "ORCHID" not in prompt
+    assert "Legacy passage" not in prompt
+
+
 def test_condense_question_uses_history():
     client = FakeClient(lambda kwargs: "How often are the sediment cartridges replaced?")
     history = [{"role": "user", "content": "Tell me about the water filter"},
