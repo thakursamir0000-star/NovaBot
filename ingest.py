@@ -7,6 +7,7 @@ from pypdf import PdfReader
 # A heading is a short line that starts with Chapter/Part/Section/Appendix + a number.
 # Checked per line, so in-text mentions like "see Chapter 5" don't count.
 _HEADING = re.compile(r"^(chapter|part|section|appendix)\s+([0-9]+|[ivxlc]+|[a-z])\b.{0,70}$", re.IGNORECASE)
+CHUNKING_VERSION = 2  # v2 keeps every chunk on one original PDF page
 
 
 def document_id(pdf_bytes, chunk_size, overlap):
@@ -16,7 +17,7 @@ def document_id(pdf_bytes, chunk_size, overlap):
     instead of reusing vectors that belong to differently cut chunks.
     """
     digest = hashlib.sha1(pdf_bytes).hexdigest()[:12]
-    return f"{digest}-{chunk_size}-{overlap}"
+    return f"{digest}-v{CHUNKING_VERSION}-{chunk_size}-{overlap}"
 
 
 def extract_text_by_page(pdf_path):
@@ -57,45 +58,47 @@ def safe_overlap(chunk_size, overlap):
 
 
 def chunk_with_overlap(pages, chunk_size=500, overlap=100):
-    """Sliding-window chunks of `chunk_size` words with `overlap` words shared.
+    """Page-local sliding-window chunks with `overlap` words shared.
 
     Each chunk records its page span and the most recent heading seen before it,
     so sources can show "Chapter 3: ..." instead of only page numbers.
+    A chunk never crosses an original PDF page boundary. This keeps page-range
+    retrieval from exposing text that belongs to an excluded page.
 
     Returns a list of {heading, text, start_page, end_page}.
     """
     overlap = safe_overlap(chunk_size, overlap)
-    words = []  # (word, page, heading)
+    chunks = []
     heading = None
     for page_num in sorted(pages):
+        words = []  # (word, heading) for this original PDF page only
         for line in (pages[page_num] or "").splitlines():
             line = line.strip()
             if not line:
                 continue
             if _HEADING.match(line):
                 heading = line[:80]
-            words.extend((w, page_num, heading) for w in line.split())
+            words.extend((word, heading) for word in line.split())
 
-    chunks = []
-    step = max(chunk_size - overlap, 1)
-    for start in range(0, len(words), step):
-        window = words[start:start + chunk_size]
-        first_page, last_page = window[0][1], window[-1][1]
-        if len(window) < 20 and chunks:
-            # A tiny tail: fold the words the previous chunk doesn't have into it.
-            new_words = words[max(start, chunks[-1]["_end"]):start + chunk_size]
-            chunks[-1]["text"] += " " + " ".join(w for w, _, _ in new_words)
-            chunks[-1]["end_page"] = last_page
-        else:
-            chunks.append({
-                "heading": window[0][2] or f"Pages {first_page + 1}–{last_page + 1}",
-                "text": " ".join(w for w, _, _ in window),
-                "start_page": first_page,
-                "end_page": last_page,
-                "_end": start + len(window),
-            })
-        if start + chunk_size >= len(words):
-            break
+        step = max(chunk_size - overlap, 1)
+        page_chunks = []
+        for start in range(0, len(words), step):
+            window = words[start:start + chunk_size]
+            if len(window) < 20 and page_chunks:
+                # Fold a tiny tail into the previous chunk from this page only.
+                new_words = words[max(start, page_chunks[-1]["_end"]):start + chunk_size]
+                page_chunks[-1]["text"] += " " + " ".join(word for word, _ in new_words)
+            else:
+                page_chunks.append({
+                    "heading": window[0][1] or f"Page {page_num + 1}",
+                    "text": " ".join(word for word, _ in window),
+                    "start_page": page_num,
+                    "end_page": page_num,
+                    "_end": start + len(window),
+                })
+            if start + chunk_size >= len(words):
+                break
+        chunks.extend(page_chunks)
 
     for chunk in chunks:
         chunk.pop("_end", None)

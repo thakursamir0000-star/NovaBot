@@ -21,7 +21,7 @@ _ADD_BATCH = 1000  # ChromaDB rejects very large single add() calls
 
 
 def _in_pages(start_page, end_page, page_start, page_end):
-    return (page_start is None or end_page >= page_start) and (page_end is None or start_page <= page_end)
+    return (page_start is None or start_page >= page_start) and (page_end is None or end_page <= page_end)
 
 
 class InMemoryStore:
@@ -85,9 +85,9 @@ class ChromaStore:
     def query(self, doc_id, vector, n, page_start=None, page_end=None):
         conditions = [{"doc_id": {"$eq": doc_id}}]
         if page_start is not None:
-            conditions.append({"end_page": {"$gte": int(page_start)}})
+            conditions.append({"start_page": {"$gte": int(page_start)}})
         if page_end is not None:
-            conditions.append({"start_page": {"$lte": int(page_end)}})
+            conditions.append({"end_page": {"$lte": int(page_end)}})
         where = conditions[0] if len(conditions) == 1 else {"$and": conditions}
 
         total = self._collection.count()

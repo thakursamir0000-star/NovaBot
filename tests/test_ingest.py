@@ -19,10 +19,13 @@ def test_every_word_is_kept_including_the_tail():
     assert seen == set(words(205).split())
 
 
-def test_page_spans_are_tracked():
-    pages = {0: words(60), 1: words(60, 60)}
+def test_passages_never_cross_original_page_boundaries():
+    pages = {0: words(160), 1: words(160, 160)}
     chunks = chunk_with_overlap(pages, chunk_size=80, overlap=10)
-    assert chunks[0]["start_page"] == 0 and chunks[0]["end_page"] == 1
+    assert {chunk["start_page"] for chunk in chunks} == {0, 1}
+    assert all(chunk["start_page"] == chunk["end_page"] for chunk in chunks)
+    assert all("w160" not in chunk["text"] for chunk in chunks if chunk["start_page"] == 0)
+    assert all("w159" not in chunk["text"] for chunk in chunks if chunk["start_page"] == 1)
 
 
 def test_headings_carry_forward_but_mentions_do_not_count():
@@ -42,3 +45,4 @@ def test_document_id_changes_with_chunk_settings():
     assert document_id(pdf, 500, 100) == document_id(pdf, 500, 100)
     assert document_id(pdf, 500, 100) != document_id(pdf, 400, 100)
     assert document_id(pdf, 500, 100) != document_id(pdf, 500, 50)
+    assert "-v2-" in document_id(pdf, 500, 100)

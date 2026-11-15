@@ -23,7 +23,7 @@ def check_store(store):
     assert results[0][1] > results[1][1]
 
     scoped = store.query("doc", np.array([1.0, 0.0, 0.0], dtype=np.float32), n=3, page_start=2, page_end=3)
-    assert {i for i, _ in scoped} == {1, 2}
+    assert {i for i, _ in scoped} == {2}  # chunk 1 spans from excluded page 1
 
     store.delete("doc")
     assert not store.has("doc")

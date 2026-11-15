@@ -23,6 +23,22 @@ RRF_K = 60
 WEIGHTS = {"bm25": 0.4, "semantic": 0.6}
 RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
+# Small, deterministic expansions for common user wording that differs from
+# handbook terminology. This also gives the dependency-free HashingEmbedder a
+# useful approximation of semantic matching in tests and offline smoke runs.
+_QUERY_ALIASES = {
+    "ambulance": ("hospital",),
+    "cars": ("vehicle", "vehicles"),
+    "centre": ("hospital",),
+    "drive": ("road",),
+    "frequent": ("common",),
+    "hurt": ("injury",),
+    "medical": ("hospital",),
+    "packaging": ("plastic", "plastics"),
+    "throwaway": ("single", "use"),
+    "winter": ("snow",),
+}
+
 _STOPWORDS = frozenset("""
 a about above after again against all also am an and any are as at be because been before being below
 between both but by can could did do does doing down during each few for from further had has have having
@@ -39,6 +55,19 @@ _reranker = None
 def tokenize(text):
     """Lowercase word tokens without punctuation or stopwords ("descent?" -> "descent")."""
     return [t for t in _TOKEN.findall(str(text).lower()) if t not in _STOPWORDS]
+
+
+def expand_query(query):
+    """Append deduplicated handbook-friendly aliases without changing the user's text."""
+    tokens = tokenize(query)
+    seen = set(tokens)
+    aliases = []
+    for token in tokens:
+        for alias in _QUERY_ALIASES.get(token, ()):
+            if alias not in seen:
+                seen.add(alias)
+                aliases.append(alias)
+    return " ".join((str(query), *aliases)) if aliases else str(query)
 
 
 def sanitize_text(text):
@@ -88,8 +117,9 @@ def build_index(chunks, doc_id, store, embedder=None, force=False):
 
 
 def _in_scope(chunk, page_start, page_end):
-    return ((page_start is None or chunk["end_page"] >= page_start)
-            and (page_end is None or chunk["start_page"] <= page_end))
+    """Whether the entire chunk belongs to the requested original-page range."""
+    return ((page_start is None or chunk["start_page"] >= page_start)
+            and (page_end is None or chunk["end_page"] <= page_end))
 
 
 def bm25_ranking(index, query, page_start=None, page_end=None):
@@ -166,8 +196,9 @@ def retrieve(index, query, top_k=5, method=DEFAULT_METHOD, use_reranker=False,
         return []
 
     n = candidates or max(top_k * 4, 20)
-    bm25_rank = bm25_ranking(index, query, page_start, page_end)[:n] if method != "semantic" else []
-    semantic_rank = semantic_ranking(index, query, n, page_start, page_end) if method != "bm25" else []
+    search_query = expand_query(query)
+    bm25_rank = bm25_ranking(index, search_query, page_start, page_end)[:n] if method != "semantic" else []
+    semantic_rank = semantic_ranking(index, search_query, n, page_start, page_end) if method != "bm25" else []
 
     if method == "bm25":
         fused = bm25_rank

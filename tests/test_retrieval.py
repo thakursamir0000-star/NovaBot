@@ -1,10 +1,12 @@
 import pytest
 
 from embeddings import HashingEmbedder
+from ingest import chunk_with_overlap
 from retrieval import (
     METHODS,
     bm25_ranking,
     build_index,
+    expand_query,
     reciprocal_rank_fusion,
     rerank,
     retrieve,
@@ -17,6 +19,13 @@ from vector_store import InMemoryStore
 def test_tokenize_strips_punctuation_and_stopwords():
     assert tokenize("What is gradient descent?") == ["gradient", "descent"]
     assert tokenize("151.625 MHz") == ["151", "625", "mhz"]
+
+
+def test_expand_query_adds_deduplicated_handbook_aliases():
+    assert expand_query("Can cars drive in winter?") == (
+        "Can cars drive in winter? vehicle vehicles road snow"
+    )
+    assert expand_query("hospital ambulance") == "hospital ambulance"
 
 
 def test_bm25_finds_exact_terms(index):
@@ -39,6 +48,42 @@ def test_unknown_method_is_rejected(index):
 def test_page_scope_filters_both_retrievers(index):
     results = retrieve(index, "bears radio drones breakfast", top_k=5, page_start=3, page_end=4)
     assert {r["chunk_id"] for r in results} <= {3, 4}
+
+
+@pytest.fixture
+def two_page_index():
+    pages = {
+        0: " ".join(["Page one contains public orientation material."] * 30),
+        1: " ".join(["The launch password is ORCHID."] * 30),
+    }
+    chunks = chunk_with_overlap(pages, chunk_size=80, overlap=10)
+    return build_index(chunks, "two-pages", InMemoryStore(), HashingEmbedder())
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_page_one_scope_excludes_page_two_content(two_page_index, method):
+    results = retrieve(
+        two_page_index, "What is the launch password?", top_k=5, method=method,
+        page_start=0, page_end=0,
+    )
+    assert all(result["start_page"] == result["end_page"] == 0 for result in results)
+    assert all("ORCHID" not in result["text"] for result in results)
+
+
+@pytest.mark.parametrize("method", METHODS)
+def test_page_two_scope_excludes_page_one_content(two_page_index, method):
+    results = retrieve(
+        two_page_index, "orientation material", top_k=5, method=method,
+        page_start=1, page_end=1,
+    )
+    assert all(result["start_page"] == result["end_page"] == 1 for result in results)
+    assert all("orientation" not in result["text"] for result in results)
+
+
+def test_unrestricted_retrieval_still_finds_page_two_answer(two_page_index):
+    results = retrieve(two_page_index, "launch password ORCHID", method="bm25")
+    assert results and results[0]["start_page"] == results[0]["end_page"] == 1
+    assert "ORCHID" in results[0]["text"]
 
 
 def test_reciprocal_rank_fusion_rewards_agreement():

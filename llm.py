@@ -232,9 +232,20 @@ def excerpt(text, question, limit=EXCERPT_CHARS):
     return ("… " if first > 0 else "") + piece + (" …" if last < len(sentences) - 1 else "")
 
 
-def build_messages(question, chunks, chat_history=None, book_title=None):
-    """System prompt + recent history + the question with numbered context passages."""
+def restrict_chunks_to_pages(chunks, page_start=None, page_end=None):
+    """Keep only passages wholly contained in the requested original pages."""
+    return [
+        chunk for chunk in chunks
+        if (page_start is None or chunk["start_page"] >= page_start)
+        and (page_end is None or chunk["end_page"] <= page_end)
+    ]
+
+
+def build_messages(question, chunks, chat_history=None, book_title=None,
+                   page_start=None, page_end=None):
+    """System prompt + history + page-scoped, numbered context passages."""
     book = f'"{book_title}"' if book_title else "the uploaded book"
+    chunks = restrict_chunks_to_pages(chunks, page_start, page_end)
     context = "\n\n---\n\n".join(
         f"[Source {i} | Pages {c['start_page'] + 1}–{c['end_page'] + 1} | {c['heading']}]\n{excerpt(c['text'], question)}"
         for i, c in enumerate(chunks, 1)
