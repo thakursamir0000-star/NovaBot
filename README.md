@@ -125,19 +125,20 @@ What this shows:
 
 How it got here (CI runs, same questions):
 
-| | First run (RRF retrieval, strict citation parser) | 2026-10-29 (weighted retrieval) | 2026-10-31 (hyphen-aware grader, citation prompt) | 2026-11-11 (re-run, same model input) |
-|---|---|---|---|---|
-| Answer accuracy | 0.868 | 0.921 | **1.00** | 0.974 |
-| False abstentions | 3 / 38 | 0 / 38 | **0 / 38** | 1 / 38 |
-| Answers with a citation | – | 37 / 38 | **38 / 38** | **38 / 38** |
-| Citation support | 0.14 | 0.974 | **1.00** | **1.00** |
-| Faithfulness (LLM judge) | – | – | **1.00** | 0.973 |
-| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s | 5.4 s / 6.6 s | 5.5 s / 6.6 s |
+| | First run (RRF retrieval, strict citation parser) | 2026-10-29 (weighted retrieval) | 2026-10-31 (hyphen-aware grader, citation prompt) | 2026-11-11 (re-run, same model input) | 2026-11-15 (same model via OpenRouter, local run) |
+|---|---|---|---|---|---|
+| Answer accuracy | 0.868 | 0.921 | **1.00** | 0.974 | 0.974 |
+| False abstentions | 3 / 38 | 0 / 38 | **0 / 38** | 1 / 38 | 1 / 38 |
+| Answers with a citation | – | 37 / 38 | **38 / 38** | **38 / 38** | **37 / 37** answered |
+| Citation support | 0.14 | 0.974 | **1.00** | **1.00** | **1.00** |
+| Faithfulness (LLM judge) | – | – | **1.00** | 0.973 | **1.00** (37 judged) |
+| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s | 5.4 s / 6.6 s | 5.5 s / 6.6 s | **0.6 s / 2.4 s** |
 
 - **Citation support 0.14 → 0.97 was a measurement bug, not better answers.** The first parser only recognised the exact `[Source N]` form, but gpt-oss often writes `【Source 1】`, `[Source 1, 3]` or `【1†source】`. Answers were already judged fully faithful; once the parser accepted these formats, the citations were found.
 - **Accuracy and false abstentions improved with the switch to weighted retrieval**, which puts the right passage in front of the LLM more often. LLM output also varies a little between runs (temperature 0.2), so small differences shouldn't be over-read. Latency depends on Groq's load at the time: p50 was 3.7 s in one run and 5.4 s in the next with the same setup.
 - **The 3 "wrong answers" in the 2026-10-29 run were grading errors.** The model wrote non-breaking hyphens (`WT‑3`, `IR‑2`, `single‑use` with U+2011), which the key-fact matcher didn't treat as `-`. After the matcher was fixed, the next CI run (2026-10-31) scored 38 / 38. The one uncited answer (#41) was correct too; the prompt now asks for a citation after every sentence, and in that run every answer had one.
 - **The 2026-11-11 dip is run-to-run variation.** The evaluation's 60-word passages (at most 433 characters) fit the excerpt budget, so the model received exactly the same input as on 2026-10-31; one answerable question was refused this time. Read the accuracy as 37–38 / 38 rather than a fixed 1.00.
+- **OpenRouter gives the same quality, faster (2026-11-15).** The same `openai/gpt-oss-120b` through OpenRouter (hosts that don't store prompts, Google Vertex skipped), run locally instead of in CI: 37 / 38 again, the one miss a refusal (#43, single-use packaging); retrieval numbers identical to the table above. Answer latency p50 dropped from ~5.5 s on Groq's free tier to 0.6 s. The run's ~80 LLM calls (answers plus the judge) cost $0.007.
 - The CI summary lists the remaining misses and uncited answers for each run.
 
 **Evidence at the app's chunk size.** The evaluation above uses 60-word passages, but the app's default is 500 words (about 3,000 characters), and the answer prompt includes at most 1,500 characters of each passage. An external review found the prompt used to take each passage's *first* characters, so a correctly retrieved answer could be cut off. Checked without an LLM on the same 38 questions, at 500-word chunks with all passages retrieved:
