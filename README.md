@@ -89,56 +89,58 @@ CI runs the retrieval evaluation with the real models on every push and posts th
 
 ### Results
 
-Measured by CI: `all-MiniLM-L6-v2` embeddings, `ms-marco-MiniLM-L-6-v2` reranker, the handbook cut into 32 chunks. Retrieval is from the 2026-10-31 run (the 2026-11-15 run gave identical scores); answers are from the 2026-11-15 run, `openai/gpt-oss-120b` via OpenRouter.
+Measured by CI on 2026-11-16, after the page-boundary fix: `all-MiniLM-L6-v2` embeddings, `ms-marco-MiniLM-L-6-v2` reranker, `openai/gpt-oss-120b` via OpenRouter; the handbook cut into 32 chunks, none crossing a page boundary.
 
 **Retrieval** (38 answerable questions)
 
 | Method | Recall@1 | Recall@3 | Recall@5 | MRR@10 | nDCG@5 | Recall@5 keyword | Recall@5 paraphrase | Latency p50 |
 |---|---|---|---|---|---|---|---|---|
-| BM25 only | 0.763 | 0.842 | 0.842 | 0.803 | 0.793 | 1.000 | 0.760 | < 1 ms |
-| Semantic only | 0.763 | 1.000 | 1.000 | 0.873 | 0.877 | 1.000 | 1.000 | 10 ms |
-| **Weighted hybrid (default)** | **0.842** | 0.974 | **1.000** | **0.910** | **0.908** | 1.000 | 1.000 | 10 ms |
-| RRF hybrid | 0.789 | 0.895 | 0.974 | 0.866 | 0.863 | 1.000 | 0.960 | 10 ms |
-| Weighted + rerank | 0.895 | 0.974 | 1.000 | 0.941 | 0.940 | 1.000 | 1.000 | 345 ms |
-| RRF + rerank | 0.895 | 0.974 | 1.000 | 0.940 | 0.939 | 1.000 | 1.000 | 364 ms |
+| BM25 only | 0.816 | 0.842 | 0.868 | 0.836 | 0.823 | 1.000 | 0.800 | < 1 ms |
+| Semantic only | 0.842 | 0.974 | 0.974 | 0.912 | 0.905 | 1.000 | 0.960 | 9 ms |
+| **Weighted hybrid (default)** | **0.921** | 0.974 | 0.974 | **0.947** | **0.939** | 1.000 | 0.960 | 9 ms |
+| RRF hybrid | 0.842 | 0.947 | 0.974 | 0.894 | 0.892 | 1.000 | 0.960 | 9 ms |
+| Weighted + rerank | 0.974 | 1.000 | 1.000 | 0.983 | 0.975 | 1.000 | 1.000 | 312 ms |
+| RRF + rerank | 0.974 | 1.000 | 1.000 | 0.983 | 0.975 | 1.000 | 1.000 | 308 ms |
 
 What this shows:
-- **Keywords alone aren't enough.** BM25 misses 24% of the reworded questions; semantic search finds all of them in the top 5.
-- **Hybrid ranks the right passage first more often** than either retriever alone (Recall@1 0.842 vs 0.763).
-- **Weighted fusion beat RRF here** (MRR 0.910 vs 0.866), so it is the default. RRF gives BM25's ranking an equal vote even on questions where BM25 matches the wrong words.
-- **Reranking gives the best ranking** (MRR 0.94) but is ~35× slower on CPU, so it stays an option.
+- **Keywords alone aren't enough.** BM25 misses 5 of the 25 reworded questions in the top 5; semantic search misses one (#39).
+- **Hybrid ranks the right passage first more often** than either retriever alone (Recall@1 0.921 vs 0.842 semantic and 0.816 BM25).
+- **Weighted fusion beat RRF here** (MRR 0.947 vs 0.894), so it is the default. RRF gives BM25's ranking an equal vote even on questions where BM25 matches the wrong words.
+- **Reranking gives the best ranking** (MRR 0.983, and it brings #39 back into the top 5) but is ~35× slower on CPU, so it stays an option.
+- **What the page-boundary fix changed (2026-11-16).** Chunks now stay on one page, so a page-range search can't return text from a page outside the range. On this handbook it also made passages cleaner: Recall@1 0.842 → 0.921 and MRR 0.910 → 0.947 against the 2026-10-31 run. One reworded question dropped out of the top 5 (Recall@5 1.000 → 0.974): #39, *"What is the most frequent way people get hurt here?"*, whose evidence reads *"the most common injury … is a twisted ankle"*. An earlier version of the fix also added query synonyms; they had been taken from the evaluation's own reworded questions, so they were removed before these numbers were measured.
 - 38 questions over 32 chunks is small: one question moves Recall by 0.026.
 
-**Answers** (44 questions, weighted hybrid, top-5 passages; CI run of 2026-11-15, `openai/gpt-oss-120b` via OpenRouter)
+**Answers** (44 questions, weighted hybrid, top-5 passages; CI run of 2026-11-16, `openai/gpt-oss-120b` via OpenRouter)
 
 | Metric | Result |
 |---|---|
-| Answer accuracy (key facts present) | **1.00** (38 / 38) |
+| Answer accuracy (key facts present) | **0.974** (37 / 38) |
 | Says "I couldn't find this in the book" for unanswerable questions | **1.00** (6 / 6) |
-| False abstentions (refused an answerable question) | **0.00** (0 / 38) |
-| Faithfulness (LLM judge: every claim supported by the passages) | **1.00** (38 / 38 answers judged) |
-| Answers with a citation | **1.00** (38 / 38) |
+| False abstentions (refused an answerable question) | 0.026 (1 / 38: #39, whose passage wasn't retrieved) |
+| Faithfulness (LLM judge: every claim supported by the passages) | 0.973 (36 / 37 answers judged) |
+| Answers with a citation | **1.00** (37 / 37 answered) |
 | Citation validity (no citation to a passage that wasn't retrieved) | 1.00 |
 | Citation support (a cited passage contains the evidence) | **1.00** |
-| Answer latency p50 / p95 | **0.53 s / 0.73 s** (5.4 s / 6.6 s on Groq's free tier, 2026-10-31) |
-| Tokens per answer | ~740 |
+| Answer latency p50 / p95 | **0.51 s / 0.81 s** (5.4 s / 6.6 s on Groq's free tier, 2026-10-31) |
+| Tokens per answer | ~710 |
 
 How it got here (CI runs, same questions):
 
-| | First run (RRF retrieval, strict citation parser) | 2026-10-29 (weighted retrieval) | 2026-10-31 (hyphen-aware grader, citation prompt) | 2026-11-11 (re-run, same model input) | 2026-11-15 (same model via OpenRouter) |
-|---|---|---|---|---|---|
-| Answer accuracy | 0.868 | 0.921 | **1.00** | 0.974 | **1.00** |
-| False abstentions | 3 / 38 | 0 / 38 | **0 / 38** | 1 / 38 | **0 / 38** |
-| Answers with a citation | – | 37 / 38 | **38 / 38** | **38 / 38** | **38 / 38** |
-| Citation support | 0.14 | 0.974 | **1.00** | **1.00** | **1.00** |
-| Faithfulness (LLM judge) | – | – | **1.00** | 0.973 | **1.00** |
-| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s | 5.4 s / 6.6 s | 5.5 s / 6.6 s | **0.53 s / 0.73 s** |
+| | First run (RRF retrieval, strict citation parser) | 2026-10-29 (weighted retrieval) | 2026-10-31 (hyphen-aware grader, citation prompt) | 2026-11-11 (re-run, same model input) | 2026-11-15 (same model via OpenRouter) | 2026-11-16 (page-boundary chunks) |
+|---|---|---|---|---|---|---|
+| Answer accuracy | 0.868 | 0.921 | **1.00** | 0.974 | **1.00** | 0.974 |
+| False abstentions | 3 / 38 | 0 / 38 | **0 / 38** | 1 / 38 | **0 / 38** | 1 / 38 |
+| Answers with a citation | – | 37 / 38 | **38 / 38** | **38 / 38** | **38 / 38** | **37 / 37** answered |
+| Citation support | 0.14 | 0.974 | **1.00** | **1.00** | **1.00** | **1.00** |
+| Faithfulness (LLM judge) | – | – | **1.00** | 0.973 | **1.00** | 0.973 |
+| Latency p50 / p95 | 5.4 s / 11.9 s | 3.7 s / 6.5 s | 5.4 s / 6.6 s | 5.5 s / 6.6 s | **0.53 s / 0.73 s** | **0.51 s / 0.81 s** |
 
 - **Citation support 0.14 → 0.97 was a measurement bug, not better answers.** The first parser only recognised the exact `[Source N]` form, but gpt-oss often writes `【Source 1】`, `[Source 1, 3]` or `【1†source】`. Answers were already judged fully faithful; once the parser accepted these formats, the citations were found.
 - **Accuracy and false abstentions improved with the switch to weighted retrieval**, which puts the right passage in front of the LLM more often. LLM output also varies a little between runs (temperature 0.2), so small differences shouldn't be over-read. Latency depends on Groq's load at the time: p50 was 3.7 s in one run and 5.4 s in the next with the same setup.
 - **The 3 "wrong answers" in the 2026-10-29 run were grading errors.** The model wrote non-breaking hyphens (`WT‑3`, `IR‑2`, `single‑use` with U+2011), which the key-fact matcher didn't treat as `-`. After the matcher was fixed, the next CI run (2026-10-31) scored 38 / 38. The one uncited answer (#41) was correct too; the prompt now asks for a citation after every sentence, and in that run every answer had one.
 - **The 2026-11-11 dip is run-to-run variation.** The evaluation's 60-word passages (at most 433 characters) fit the excerpt budget, so the model received exactly the same input as on 2026-10-31; one answerable question was refused this time. Read the accuracy as 37–38 / 38 rather than a fixed 1.00.
-- **OpenRouter gives the same quality, about 10× faster (2026-11-15).** The same `openai/gpt-oss-120b` through OpenRouter (hosts that don't store prompts, Google Vertex skipped) scored 38 / 38 in CI, every answer cited and judged faithful, with retrieval scores identical to the table above. Answer latency p50 dropped from ~5.5 s on Groq's free tier to 0.53 s, and p95 from 6.6 s to 0.73 s. A local run the same day scored 37 / 38 (it refused #43, on single-use packaging, which the CI run answered), so the 37–38 / 38 reading above still holds. A run's ~80 LLM calls (answers plus the judge) cost about $0.007.
+- **OpenRouter gives the same quality, about 10× faster (2026-11-15).** The same `openai/gpt-oss-120b` through OpenRouter (hosts that don't store prompts, Google Vertex skipped) scored 38 / 38 in CI, every answer cited and judged faithful, with retrieval scores identical to the 2026-10-31 run. Answer latency p50 dropped from ~5.5 s on Groq's free tier to 0.53 s, and p95 from 6.6 s to 0.73 s. A local run the same day scored 37 / 38 (it refused #43, on single-use packaging, which the CI run answered), so the 37–38 / 38 reading above still holds. A run's ~80 LLM calls (answers plus the judge) cost about $0.007.
+- **2026-11-16: the one miss comes from retrieval, not the LLM.** After the page-boundary fix, #39 is the only question whose passage isn't in the top 5, and the model said it couldn't find the answer, which is the right behaviour when the passage isn't there. Reranking puts that passage back in the top 5. The judge also marked one answer as not fully supported: #43 said the policy prohibits "all throwaway packaging", while the handbook only says "zero single-use plastics".
 - The CI summary lists the remaining misses and uncited answers for each run.
 
 **Evidence at the app's chunk size.** The evaluation above uses 60-word passages, but the app's default is 500 words (about 3,000 characters), and the answer prompt includes at most 1,500 characters of each passage. An external review found the prompt used to take each passage's *first* characters, so a correctly retrieved answer could be cut off. Checked without an LLM on the same 38 questions, at 500-word chunks with all passages retrieved:
@@ -149,7 +151,7 @@ How it got here (CI runs, same questions):
 | The sentence window sharing the most question words | 33 / 38 |
 | **Window around the best-matching sentence, rarer words weighted, plurals folded (current)** | **37 / 38** |
 
-The remaining miss is a paraphrase with almost no words in common with its evidence. A test keeps this at 37 / 38 or better. The heuristic was tuned on these same questions, so expect a little less on new documents.
+The remaining miss was a paraphrase with almost no words in common with its evidence. Since the page-boundary fix, the test checks this with the app's real embedding model and the five passages it retrieves: all 38 questions now have their evidence in the prompt, and the test requires at least 37. The heuristic was tuned on these same questions, so expect a little less on new documents.
 
 ## 🚀 Getting Started
 
@@ -198,11 +200,11 @@ ruff check .
 pytest
 ```
 
-The 63 tests run without network access or an API key: a fake LLM client, a hashing stand-in for the embedding model, and real ChromaDB in a temporary folder. They cover chunking, tokenization, every retrieval method and both fusions, keyword search on one- and two-passage documents, reranker input, index reuse, per-session isolation and expiry, which part of a long passage reaches the prompt (including the 37 / 38 evidence check at the app's chunk size), citation and abstention checks, model failover (including failures mid-stream), provider choice and OpenRouter request settings, the evaluation metrics, and a Streamlit smoke test that clicks **Re-index**.
+The 75 tests run without an API key: a fake LLM client, a hashing stand-in for the embedding model, and real ChromaDB in a temporary folder. The one exception to the stand-in is the evidence check at the app's chunk size, which uses the real `all-MiniLM-L6-v2` model (CI caches it). They cover chunking (chunks never cross a page), page-range scoping, tokenization, every retrieval method and both fusions, keyword search on one- and two-passage documents, reranker input, index reuse, per-session isolation and expiry, which part of a long passage reaches the prompt (including that evidence check), citation and abstention checks, model failover (including failures mid-stream), provider choice and OpenRouter request settings, the evaluation metrics, and a Streamlit smoke test that clicks **Re-index**.
 
 ## 🧠 Design notes
 
-- **Why weighted fusion over RRF?** RRF was the first default because it needs no tuning, but the evaluation showed weighted fusion (0.4 BM25 / 0.6 semantic, each min-max normalized) ranks the right passage higher (MRR 0.910 vs 0.866), so the default followed the data.
+- **Why weighted fusion over RRF?** RRF was the first default because it needs no tuning, but the evaluation showed weighted fusion (0.4 BM25 / 0.6 semantic, each min-max normalized) ranks the right passage higher (MRR 0.910 vs 0.866 when it was chosen; 0.947 vs 0.894 after the page-boundary fix), so the default followed the data.
 - **Why a fixed abstention sentence?** It makes "doesn't hallucinate when the book has no answer" measurable.
 - **Why chunk settings in the document ID?** The same PDF cut differently is a different index; reusing vectors across chunkings silently returns the wrong passages.
 - **What was removed:** an LDA "topic boost" (worth at most 1.5% of the score and zero on PDFs without "Chapter N" headings) and the unused "hierarchical tree", along with their scikit-learn and NLTK dependencies.
