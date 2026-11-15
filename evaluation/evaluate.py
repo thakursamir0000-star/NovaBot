@@ -1,7 +1,7 @@
 """Evaluate NovaBot on a document with known answers.
 
     python evaluation/evaluate.py                      # retrieval + system metrics (real models)
-    python evaluation/evaluate.py --with-llm           # + answer quality via Groq (needs GROQ_API_KEY)
+    python evaluation/evaluate.py --with-llm           # + answer quality (needs GROQ_API_KEY or OPENROUTER_API_KEY)
     python evaluation/evaluate.py --embedder hashing   # smoke test without torch — NOT real semantic numbers
     python evaluation/evaluate.py --doc book.pdf --questions my_questions.jsonl
 
@@ -219,7 +219,8 @@ def markdown(report):
                      f"{m['ndcg@5']:.3f} | {m['recall@5_keyword']:.3f} | {m['recall@5_paraphrase']:.3f} | {m['latency_ms_p50']} |")
     if "answers" in report:
         a = report["answers"]
-        lines += ["", f"**Answers** (method `{a['method']}`, top-5 passages)", "",
+        via = f", {report['llm_provider']} `{llm.PRIMARY_MODEL}`" if "llm_provider" in report else ""
+        lines += ["", f"**Answers** (method `{a['method']}`, top-5 passages{via})", "",
                   "| Answer accuracy | Abstains when unanswerable | False abstentions | Answers with citations | "
                   "Citation validity | Citation support | Faithfulness | Latency p50 / p95 | Tokens / answer |",
                   "|---|---|---|---|---|---|---|---|---|",
@@ -289,7 +290,8 @@ def main():
     if args.with_llm:
         client = llm.get_client()
         if client is None:
-            raise SystemExit("--with-llm needs GROQ_API_KEY in the environment.")
+            raise SystemExit("--with-llm needs GROQ_API_KEY or OPENROUTER_API_KEY in the environment.")
+        report["llm_provider"] = llm.provider_name()
         report["answers"] = evaluate_answers(index, questions, client)
 
     RESULTS_DIR.mkdir(exist_ok=True)

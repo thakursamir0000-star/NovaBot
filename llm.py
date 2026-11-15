@@ -1,4 +1,9 @@
-"""Groq LLM calls: follow-up rewriting, grounded answers with citations, and citation checks."""
+"""LLM calls (Groq or OpenRouter): follow-up rewriting, grounded answers with citations, and citation checks.
+
+LLM_PROVIDER picks "groq" (GROQ_API_KEY, free tier with daily limits) or "openrouter"
+(OPENROUTER_API_KEY, paid, no daily cap); the model names are the same on both. Without
+LLM_PROVIDER, Groq is used when its key is set, otherwise OpenRouter.
+"""
 import logging
 import math
 import os
@@ -11,6 +16,12 @@ PRIMARY_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
 # model family with its own daily quota, so it still answers when both gpt-oss are capped.
 FALLBACK_MODELS = [m.strip() for m in os.environ.get(
     "GROQ_FALLBACK_MODELS", "openai/gpt-oss-20b,qwen/qwen3.8-27b").split(",") if m.strip()]
+PROVIDER_KEYS = {"groq": "GROQ_API_KEY", "openrouter": "OPENROUTER_API_KEY"}
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# OpenRouter sends each request to one of many hosts: only use hosts that don't store or
+# train on prompts (the user's document is in them), and skip Google Vertex, which returned
+# broken output for gpt-oss-120b when tested on 2026-11-15.
+OPENROUTER_ROUTING = {"data_collection": "deny", "ignore": ["google-vertex"]}
 HISTORY_TURNS = 6
 EXCERPT_CHARS = 1500  # per passage; ~half of a 500-word chunk, centred on the best-matching sentence
 NOT_FOUND = "I couldn't find this in the book."
@@ -38,22 +49,48 @@ Latest message: {question}
 Standalone query:"""
 
 
-def get_client():
-    """Groq client from GROQ_API_KEY (env or Streamlit secrets), or None."""
-    api_key = os.environ.get("GROQ_API_KEY", "")
-    if not api_key:
+def _setting(name):
+    """A setting from the environment, else from Streamlit secrets."""
+    value = os.environ.get(name, "")
+    if not value:
         try:
             import streamlit as st
 
-            api_key = st.secrets.get("GROQ_API_KEY", "")
+            value = st.secrets.get(name, "")
         except Exception:
-            api_key = ""
-    api_key = api_key.strip().strip('"').strip("'")
+            value = ""
+    return str(value).strip().strip('"').strip("'")
+
+
+def provider_name():
+    """LLM_PROVIDER if set, else Groq when GROQ_API_KEY is set, else OpenRouter when its key is."""
+    choice = _setting("LLM_PROVIDER").lower()
+    if choice:
+        if choice not in PROVIDER_KEYS:
+            raise ValueError(f"LLM_PROVIDER must be one of {', '.join(PROVIDER_KEYS)}, not {choice!r}")
+        return choice
+    if not _setting("GROQ_API_KEY") and _setting("OPENROUTER_API_KEY"):
+        return "openrouter"
+    return "groq"
+
+
+def get_client():
+    """Groq or OpenRouter client (key from env or Streamlit secrets), or None without a key."""
+    provider = provider_name()
+    api_key = _setting(PROVIDER_KEYS[provider])
     if not api_key:
         return None
+    if provider == "openrouter":
+        from openai import OpenAI
+
+        return OpenAI(api_key=api_key, base_url=OPENROUTER_BASE_URL, timeout=60, max_retries=2)
     from groq import Groq
 
     return Groq(api_key=api_key)
+
+
+def is_openrouter(client):
+    return "openrouter.ai" in str(getattr(client, "base_url", ""))
 
 
 def candidate_models():
@@ -65,15 +102,24 @@ def candidate_models():
 
 
 def _record_failure(model, error):
-    if getattr(error, "status_code", None) == 404 or "model_not_found" in str(error):
+    # Groq: 404 / model_not_found. OpenRouter: 400 "<model> is not a valid model ID".
+    if (getattr(error, "status_code", None) == 404 or "model_not_found" in str(error)
+            or "not a valid model ID" in str(error)):
         _unavailable_models.add(model)
         logger.warning("Model %s is not available on this account; skipping it from now on", model)
     else:
         logger.warning("Model %s failed: %s", model, error)
 
 
-def _kwargs(model, **extra):
-    if model.startswith("openai/gpt-oss"):
+def _kwargs(model, openrouter=False, **extra):
+    low_reasoning = model.startswith("openai/gpt-oss")
+    if openrouter:
+        # OpenRouter takes reasoning effort and host routing in the request body.
+        body = {"provider": OPENROUTER_ROUTING}
+        if low_reasoning:
+            body["reasoning"] = {"effort": "low"}
+        extra["extra_body"] = body
+    elif low_reasoning:
         extra["reasoning_effort"] = "low"
     return {"model": model, **extra}
 
@@ -83,7 +129,8 @@ def complete(client, messages, temperature=0.2, max_tokens=1024):
     for model in candidate_models():
         try:
             response = client.chat.completions.create(
-                **_kwargs(model, messages=messages, temperature=temperature, max_tokens=max_tokens))
+                **_kwargs(model, is_openrouter(client), messages=messages, temperature=temperature,
+                          max_tokens=max_tokens))
             return response.choices[0].message.content or "", getattr(response, "usage", None)
         except Exception as e:
             _record_failure(model, e)
@@ -97,7 +144,8 @@ def stream_answer(client, messages, temperature=0.2, max_tokens=1024):
         started = False
         try:
             stream = client.chat.completions.create(
-                **_kwargs(model, messages=messages, temperature=temperature, max_tokens=max_tokens, stream=True))
+                **_kwargs(model, is_openrouter(client), messages=messages, temperature=temperature,
+                          max_tokens=max_tokens, stream=True))
             for part in stream:
                 delta = part.choices[0].delta.content if part.choices else None
                 if delta:

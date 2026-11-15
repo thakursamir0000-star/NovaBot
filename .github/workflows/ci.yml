@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       model:
-        description: Groq model that writes the answers (each model has its own daily quota)
+        description: Model that writes the answers (on Groq each model has its own daily quota)
         type: choice
         default: openai/gpt-oss-120b
         options:
@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}  # optional; enables the answer evaluation
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}  # optional paid alternative; used when GROQ_API_KEY is absent
       GROQ_MODEL: ${{ inputs.model || 'openai/gpt-oss-120b' }}
     steps:
       - uses: actions/checkout@v7
@@ -41,8 +42,8 @@ jobs:
         run: ruff check .
       - name: Test
         run: pytest
-      - name: Evaluation (retrieval on every push; answers via Groq on demand and weekly)
-        run: python evaluation/evaluate.py ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && env.GROQ_API_KEY != '' && '--with-llm' || '' }}
+      - name: Evaluation (retrieval on every push; answers via the LLM on demand and weekly)
+        run: python evaluation/evaluate.py ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && (env.GROQ_API_KEY != '' || env.OPENROUTER_API_KEY != '') && '--with-llm' || '' }}
       - uses: actions/upload-artifact@v7
         if: always()
         with:
