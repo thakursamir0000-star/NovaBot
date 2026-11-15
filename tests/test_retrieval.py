@@ -1,12 +1,12 @@
 import pytest
 
+import retrieval
 from embeddings import HashingEmbedder
 from ingest import chunk_with_overlap
 from retrieval import (
     METHODS,
     bm25_ranking,
     build_index,
-    expand_query,
     reciprocal_rank_fusion,
     rerank,
     retrieve,
@@ -21,11 +21,24 @@ def test_tokenize_strips_punctuation_and_stopwords():
     assert tokenize("151.625 MHz") == ["151", "625", "mhz"]
 
 
-def test_expand_query_adds_deduplicated_handbook_aliases():
-    assert expand_query("Can cars drive in winter?") == (
-        "Can cars drive in winter? vehicle vehicles road snow"
-    )
-    assert expand_query("hospital ambulance") == "hospital ambulance"
+def test_retrieve_passes_the_original_query_to_both_rankers(index, monkeypatch):
+    seen = []
+
+    def fake_bm25(_index, query, _page_start, _page_end):
+        seen.append(("bm25", query))
+        return [(0, 1.0)]
+
+    def fake_semantic(_index, query, _n, _page_start, _page_end):
+        seen.append(("semantic", query))
+        return [(0, 1.0)]
+
+    monkeypatch.setattr(retrieval, "bm25_ranking", fake_bm25)
+    monkeypatch.setattr(retrieval, "semantic_ranking", fake_semantic)
+    query = "Keep this query unchanged, including punctuation!"
+
+    retrieve(index, query, method="weighted")
+
+    assert seen == [("bm25", query), ("semantic", query)]
 
 
 def test_bm25_finds_exact_terms(index):
