@@ -3,7 +3,13 @@ import os
 
 import numpy as np
 
-EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
+_DEFAULT_MODEL = "all-MiniLM-L6-v2"
+_DEFAULT_MODEL_REVISION = "1110a243fdf4706b3f48f1d95db1a4f5529b4d41"
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", _DEFAULT_MODEL)
+EMBEDDING_MODEL_REVISION = os.environ.get(
+    "EMBEDDING_MODEL_REVISION",
+    _DEFAULT_MODEL_REVISION if EMBEDDING_MODEL == _DEFAULT_MODEL else None,
+)
 
 _model = None
 
@@ -14,7 +20,7 @@ def get_embedder():
     if _model is None:
         from sentence_transformers import SentenceTransformer
 
-        _model = SentenceTransformer(EMBEDDING_MODEL)
+        _model = SentenceTransformer(EMBEDDING_MODEL, revision=EMBEDDING_MODEL_REVISION)
     return _model
 
 
